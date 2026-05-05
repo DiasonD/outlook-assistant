@@ -46,7 +46,10 @@ function formatEmail(email, verbosity = 'standard') {
  * Requires Mail.Read.Shared permission
  */
 async function handleAccessSharedMailbox(args) {
-  const { sharedMailbox, folder, count, outputVerbosity } = args;
+  // F-46: accept `email` as alias for `sharedMailbox`. The original
+  // param name is awkward; most callers reach for `email` first.
+  const { folder, count, outputVerbosity } = args;
+  const sharedMailbox = args.sharedMailbox || args.email;
 
   if (!sharedMailbox) {
     return {
@@ -458,11 +461,24 @@ async function handleFindMeetingRooms(args) {
         );
         rooms = roomsResponse.value || [];
       } catch (findRoomsError) {
+        // F-47: distinguish "feature not available on personal account"
+        // from generic permission errors. Personal Outlook.com accounts
+        // surface a 404 here; organizational accounts surface
+        // permission errors. Both look similar in Graph but mean very
+        // different things to the caller.
+        const errMsg = findRoomsError.message || '';
+        const isLikelyPersonal =
+          errMsg.includes('404') ||
+          errMsg.includes('Not Found') ||
+          errMsg.includes('NotFound');
+        const explanation = isLikelyPersonal
+          ? 'Meeting room search is M365-only. Personal Outlook.com accounts cannot use this feature — there are no rooms to find. Connect a Microsoft 365 work/school account to enable.'
+          : 'This feature requires:\n- Places.Read.All permission\n- Meeting rooms configured in your organization';
         return {
           content: [
             {
               type: 'text',
-              text: `Unable to find meeting rooms.\n\n**Note**: This feature requires:\n- Places.Read.All permission\n- Meeting rooms configured in your organization\n\nError: ${findRoomsError.message}`,
+              text: `Unable to find meeting rooms.\n\n**Note**: ${explanation}\n\nError: ${errMsg}`,
             },
           ],
         };
@@ -603,6 +619,11 @@ const advancedTools = [
           type: 'string',
           description: 'Email address of the shared mailbox (required)',
         },
+        email: {
+          type: 'string',
+          description:
+            'Alias for `sharedMailbox` (more intuitive name for the same value).',
+        },
         folder: {
           type: 'string',
           description: 'Folder to read from (default: inbox)',
@@ -617,7 +638,8 @@ const advancedTools = [
           description: 'Output detail level (default: standard)',
         },
       },
-      required: ['sharedMailbox'],
+      additionalProperties: false,
+      required: [],
     },
     handler: handleAccessSharedMailbox,
   },
@@ -654,6 +676,7 @@ const advancedTools = [
           description: 'Output detail level (default: standard)',
         },
       },
+      additionalProperties: false,
       required: [],
     },
     handler: handleFindMeetingRooms,

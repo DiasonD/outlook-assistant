@@ -116,9 +116,9 @@ async function handleListCategories(args) {
       output.push('|----------|-------|-----|');
       categories.forEach((cat) => {
         const colorName = COLOR_NAMES[cat.color] || cat.color;
-        const idDisplay =
-          outputVerbosity === 'full' ? cat.id : `${cat.id.substring(0, 8)}...`;
-        output.push(`| ${cat.displayName} | ${colorName} | ${idDisplay} |`);
+        // F-9: emit full IDs at standard verbosity. Truncated IDs were
+        // unusable downstream (the ellipsis became part of the copy).
+        output.push(`| ${cat.displayName} | ${colorName} | ${cat.id} |`);
       });
     }
 
@@ -255,7 +255,9 @@ async function handleCreateCategory(args) {
  * Update category handler
  */
 async function handleUpdateCategory(args) {
-  const { id, displayName, color } = args;
+  // F-34: accept `categoryId` as a deprecated alias for `id`.
+  const id = args.id || args.categoryId;
+  const { displayName, color } = args;
 
   if (!id) {
     return {
@@ -298,34 +300,45 @@ async function handleUpdateCategory(args) {
     if (displayName) updateData.displayName = displayName;
     if (color) updateData.color = color;
 
-    const response = await callGraphAPI(
+    await callGraphAPI(
       accessToken,
       'PATCH',
       `me/outlook/masterCategories/${id}`,
       updateData
     );
 
-    // Prefer input values over response (PATCH may return partial data)
-    const updatedName = displayName || response.displayName;
-    const updatedColor = color || response.color;
-    const colorName = COLOR_NAMES[updatedColor] || updatedColor;
+    // F-35: Graph silently drops master-category color updates on
+    // some account types. Re-fetch the category and diff requested
+    // values against what Graph actually stored, so the caller
+    // doesn't get a misleading "Category updated!" when nothing
+    // changed.
+    const fresh = await callGraphAPI(
+      accessToken,
+      'GET',
+      `me/outlook/masterCategories/${id}`
+    );
 
-    const updatedCategory = {
-      ...response,
-      displayName: updatedName,
-      color: updatedColor,
-    };
+    const warnings = [];
+    if (color && fresh.color !== color) {
+      warnings.push(
+        `Requested color \`${color}\` but Graph stored \`${fresh.color}\` (master-category colors may be immutable on this account type).`
+      );
+    }
+    if (displayName && fresh.displayName !== displayName) {
+      warnings.push(
+        `Requested name \`${displayName}\` but Graph stored \`${fresh.displayName}\`.`
+      );
+    }
+
+    const colorName = COLOR_NAMES[fresh.color] || fresh.color;
+    let text = `Category updated!\n\n**Name**: ${fresh.displayName}\n**Color**: ${colorName} (${fresh.color})\n**ID**: ${fresh.id || id}`;
+    if (warnings.length > 0) {
+      text += `\n\n**⚠ Warning**:\n${warnings.map((w) => `- ${w}`).join('\n')}`;
+    }
 
     return {
-      content: [
-        {
-          type: 'text',
-          text: `Category updated!\n\n**Name**: ${updatedName}\n**Color**: ${colorName} (${updatedColor})\n**ID**: ${response.id || id}`,
-        },
-      ],
-      _meta: {
-        category: formatCategory(updatedCategory),
-      },
+      content: [{ type: 'text', text }],
+      _meta: { category: formatCategory(fresh) },
     };
   } catch (error) {
     if (error.message === 'Authentication required') {
@@ -353,7 +366,8 @@ async function handleUpdateCategory(args) {
  * Delete category handler
  */
 async function handleDeleteCategory(args) {
-  const { id } = args;
+  // F-34: accept `categoryId` as a deprecated alias for `id`.
+  const id = args.id || args.categoryId;
 
   if (!id) {
     return {
@@ -824,8 +838,9 @@ const categoriesTools = [
       properties: {
         action: {
           type: 'string',
-          enum: ['list', 'create', 'update', 'delete'],
-          description: 'Action to perform (default: list)',
+          enum: ['list', 'create', 'update', 'set', 'delete'],
+          description:
+            "Action to perform (default: list). 'set' is a deprecated alias for 'update'.",
         },
         // list params
         outputVerbosity: {
@@ -850,7 +865,12 @@ const categoriesTools = [
           type: 'string',
           description: 'Category ID (action=update/delete, required)',
         },
+        categoryId: {
+          type: 'string',
+          description: 'DEPRECATED: alias for `id`. Will be removed in v3.8.0.',
+        },
       },
+      additionalProperties: false,
       required: [],
     },
     handler: async (args) => {
@@ -858,13 +878,22 @@ const categoriesTools = [
       switch (action) {
         case 'create':
           return handleCreateCategory(args);
+        case 'set': // deprecated alias
         case 'update':
           return handleUpdateCategory(args);
         case 'delete':
           return handleDeleteCategory(args);
         case 'list':
-        default:
           return handleListCategories(args);
+        default:
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Unknown action '${action}'. Valid actions: list, create, update, delete.`,
+              },
+            ],
+          };
       }
     },
   },
@@ -901,6 +930,7 @@ const categoriesTools = [
             'set (replace all), add (append), remove (remove specific). Default: set',
         },
       },
+      additionalProperties: false,
       required: ['categories'],
     },
     handler: handleApplyCategory,
@@ -945,6 +975,7 @@ const categoriesTools = [
             'Where to put emails from this sender (action=set, default: focused)',
         },
       },
+      additionalProperties: false,
       required: [],
     },
     handler: async (args) => {
@@ -955,8 +986,16 @@ const categoriesTools = [
         case 'delete':
           return handleSetFocusedInboxOverride(args);
         case 'list':
-        default:
           return handleGetFocusedInboxOverrides(args);
+        default:
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Unknown action '${action}'. Valid actions: list, set, delete.`,
+              },
+            ],
+          };
       }
     },
   },

@@ -209,6 +209,11 @@ const rulesTools = [
           description:
             'Rule name (action=create required, action=update to rename)',
         },
+        displayName: {
+          type: 'string',
+          description:
+            "Alias for `name` (matches Graph's own `displayName` field).",
+        },
         dryRun: {
           type: 'boolean',
           description:
@@ -378,10 +383,15 @@ const rulesTools = [
           description: 'ID of existing rule (action=update/delete)',
         },
       },
+      additionalProperties: false,
       required: [],
     },
     handler: async (args) => {
       const action = args.action || 'list';
+      // F-41: accept Graph's own `displayName` as alias for `name`.
+      if (args.displayName && !args.name) {
+        args = { ...args, name: args.displayName };
+      }
       switch (action) {
         case 'create':
           return handleCreateRule(args);
@@ -392,8 +402,16 @@ const rulesTools = [
         case 'delete':
           return handleDeleteRule(args);
         case 'list':
-        default:
           return handleListRules(args);
+        default:
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Unknown action '${action}'. Valid actions: list, create, update, reorder, delete.`,
+              },
+            ],
+          };
       }
     },
   },

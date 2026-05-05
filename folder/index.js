@@ -81,6 +81,7 @@ const folderTools = [
             'Folder name to delete — resolved to ID (action=delete). Cannot delete protected folders (Inbox, Drafts, Sent, etc.)',
         },
       },
+      additionalProperties: false,
       required: [],
     },
     handler: async (args) => {
@@ -95,8 +96,16 @@ const folderTools = [
         case 'delete':
           return handleDeleteFolder(args);
         case 'list':
-        default:
           return handleListFolders(args);
+        default:
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Unknown action '${action}'. Valid actions: list, create, move, stats, delete.`,
+              },
+            ],
+          };
       }
     },
   },

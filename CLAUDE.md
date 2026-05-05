@@ -1,6 +1,6 @@
 # CLAUDE.md - Outlook Assistant
 
-MCP server for Microsoft Outlook via Graph API (v3.7.2). 22 tools across 9 modules.
+MCP server for Microsoft Outlook via Graph API (v3.7.4). 22 tools across 9 modules.
 
 ## Commands
 
@@ -43,15 +43,16 @@ Module layout, file organisation, and the v1→v3 tool-consolidation map live in
 - **send-email**: `dryRun` param, `checkRecipients` param (mail tips), session rate limiting (`OUTLOOK_MAX_EMAILS_PER_SESSION`), recipient allowlist (`OUTLOOK_ALLOWED_RECIPIENTS`)
 - **draft**: `dryRun` on create, `checkRecipients` (mail tips), recipient allowlist, rate limiting. Send action shares limit with `send-email`.
 - **manage-rules**: `dryRun` on create/update, rate limiting (`OUTLOOK_MAX_MANAGE_RULES_PER_SESSION`), recipient allowlist on forwardTo/redirectTo, no `permanentDelete` (too dangerous for AI). Supports 12 conditions, 9 actions, and exceptions.
-- **manage-event**: marked `destructiveHint: true` (decline/cancel/delete)
+- **manage-event**: marked `destructiveHint: true` (decline/cancel/delete). `accept` is deliberately omitted — Microsoft Graph doesn't expose an `accept` verb in a way that works across personal/M365 reliably; use the Outlook UI to accept invitations.
 - 7 read-only tools auto-approved by Claude Code; 2 destructive tools prompt for confirmation
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `index.js` | MCP protocol handler, combines all tools |
+| `index.js` | MCP protocol handler, combines all tools, runs schema coercion before each handler |
 | `config.js` | API endpoint, auth settings, defaults |
+| `utils/schema-coerce.js` | MCP-boundary param coercion + validation (string→array/boolean/number, `additionalProperties: false`, required, enums) |
 | `auth/token-storage.js` | Token storage with auto-refresh at `~/.outlook-assistant-tokens.json` (includes `auth_method` field) |
 | `auth/device-code.js` | Device code flow for headless/remote authentication |
 | `auth/tools.js` | Auth tool handlers; persists device code state to `~/.outlook-assistant-pending-auth.json` |
@@ -132,12 +133,36 @@ Mock data defined in `utils/mock-data.js`.
 - Batch API: `callGraphAPIBatch()` sends up to 20 requests via `$batch` endpoint
 - Immutable IDs: opt-in via `OUTLOOK_IMMUTABLE_IDS=true` — IDs persist through folder moves
 
+## Protected Files
+
+`docs/faq/index.md` is the upstream content source for the marketing-site help-centre `FAQPage` JSON-LD pipeline (`littlebearapps/littlebearapps.com` syncs from it). It **must not be deleted** — review and update at every release, never delete or truncate. See [`.claude/rules/faq-maintenance.md`](.claude/rules/faq-maintenance.md) for the update-trigger checklist (auth changes, new tools, safety controls, account-compatibility shifts, privacy/data-flow changes, install/update/uninstall procedure changes) and the quality bar (≥7 question-shaped H2s, complete answers, no placeholders).
+
+The repo ships [`.claude/hooks/faq-protection.sh`](.claude/hooks/faq-protection.sh) which enforces this when wired into your local `.claude/settings.json`. The hook blocks `rm`/`mv`/`git rm`/`git mv` of the file or `docs/faq/` directory, and rejects `Write` operations that drop below the 7-question floor. To activate, add to your `.claude/settings.json` (this file is local-only by repo convention):
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write",
+        "hooks": [{ "type": "command", "command": ".claude/hooks/faq-protection.sh" }]
+      }
+    ]
+  }
+}
+```
+
+Use `Edit` (not `Write`) to revise individual Q&A pairs — the `Write` guard is a backstop, not the everyday path.
+
 ## See Also
 
 - [`README.md`](README.md) - Full documentation, Azure setup, tool reference
+- [`ROADMAP.md`](ROADMAP.md) - Active milestones (v3.7.5, v3.8.0, v3.9.0) and recent releases
 - [`docs/architecture.md`](docs/architecture.md) - Module layout, file tree, tool-consolidation map, history
 - [`docs/troubleshooting.md`](docs/troubleshooting.md) - Common issues and fixes
 - [`docs/quickrefs/tools-reference.md`](docs/quickrefs/tools-reference.md) - Tools quick reference
+- [`docs/faq/index.md`](docs/faq/index.md) - User-facing FAQ (feeds the help-centre `FAQPage` schema; see protection note above)
+- [`docs/research/publisher-verification.md`](docs/research/publisher-verification.md) - Shared multi-tenant publisher-verified app strategy (GH #147); rollout status in [`publisher-verification-tasks.md`](docs/research/publisher-verification-tasks.md)
 - `.env.example` - Environment template
 
 # currentDate

@@ -33,7 +33,12 @@ async function handleSearchEmails(args) {
     };
   }
 
-  const requestedCount = args.count ?? DEFAULT_LIMITS.searchEmails; // Default 10
+  // F-17: accept `maxResults` as an alias for `count` in non-delta mode.
+  // The schema declares both, but `maxResults` was only consumed by
+  // the delta path, so callers passing `maxResults=5` to a normal
+  // search saw their override silently ignored.
+  const requestedCount =
+    args.count ?? args.maxResults ?? DEFAULT_LIMITS.searchEmails;
   const verbosity = args.outputVerbosity || VERBOSITY.STANDARD;
   const query = args.query || '';
   const from = args.from || '';
@@ -122,16 +127,40 @@ async function progressiveSearch(
   // Track search strategies attempted
   const searchAttempts = [];
 
-  // 0. If raw KQL query provided, use it directly
+  // 0. If raw KQL query provided, use it directly. The kqlQuery branch
+  //    *terminates* — if Graph returns 0 (or throws), we surface that
+  //    explicitly rather than falling through to combined-search, which
+  //    would drop the user's filter and return unrelated recent emails
+  //    with a misleading "combined-search" strategy line. (#169)
   if (searchTerms.kqlQuery) {
     try {
-      console.error(`Attempting raw KQL search: "${searchTerms.kqlQuery}"`);
+      // Pass the user's KQL through as-is. The user is responsible for
+      // their own phrase quoting (e.g. `subject:"foo bar"`); we do NOT
+      // auto-wrap, which previously produced broken nested quotes like
+      // `"subject:"foo bar""` on Graph $search and silently returned
+      // recent unfiltered messages. (#169 V37-F-1)
+      const trimmedKql = searchTerms.kqlQuery.trim();
+      const alreadyQuoted =
+        trimmedKql.startsWith('"') && trimmedKql.endsWith('"');
+      const looksLikeExpression =
+        trimmedKql.includes(':') || /\s/.test(trimmedKql);
+      // Already-quoted phrases and KQL-looking expressions (field syntax
+      // or multi-word) are passed through as-is; only bare single tokens
+      // are wrapped so Graph treats them as phrase searches.
+      let kqlForSearch;
+      if (alreadyQuoted || looksLikeExpression) {
+        kqlForSearch = trimmedKql;
+      } else {
+        kqlForSearch = `"${trimmedKql}"`;
+      }
+
+      console.error(`Attempting raw KQL search: ${kqlForSearch}`);
       searchAttempts.push('raw-kql');
 
       const kqlParams = {
         $top: Math.min(50, maxCount),
         $select: selectFields,
-        $search: `"${searchTerms.kqlQuery}"`,
+        $search: kqlForSearch,
       };
 
       const response = await callGraphAPIPaginated(
@@ -141,20 +170,40 @@ async function progressiveSearch(
         kqlParams,
         maxCount
       );
-      if (response.value && response.value.length > 0) {
-        console.error(
-          `Raw KQL search successful: found ${response.value.length} results`
-        );
-        response._searchInfo = {
+      console.error(
+        `Raw KQL search complete: ${response.value?.length || 0} results`
+      );
+      const matched = response.value?.length || 0;
+      response._searchInfo = {
+        attemptsCount: searchAttempts.length,
+        strategies: searchAttempts,
+        originalTerms: searchTerms,
+        filterTerms: filterTerms,
+        kqlApplied: kqlForSearch,
+        // noResults flips on the helpful "Suggestions" block in the
+        // formatter — without it, an empty kqlQuery result would render
+        // the bare "No emails found matching your search criteria" line
+        // with no guidance.
+        noResults: matched === 0,
+      };
+      // Always return — never silently fall through to a path that
+      // would ignore kqlQuery and return unrelated emails.
+      return response;
+    } catch (error) {
+      console.error(`Raw KQL search failed: ${error.message}`);
+      // Surface the failure rather than masking it with unrelated results.
+      searchAttempts.push('raw-kql-error');
+      return {
+        value: [],
+        _searchInfo: {
           attemptsCount: searchAttempts.length,
           strategies: searchAttempts,
           originalTerms: searchTerms,
           filterTerms: filterTerms,
-        };
-        return response;
-      }
-    } catch (error) {
-      console.error(`Raw KQL search failed: ${error.message}`);
+          kqlError: error.message,
+          noResults: true,
+        },
+      };
     }
   }
 
@@ -566,18 +615,26 @@ function filterToClientSide(messages, toValue) {
  * @returns {Array} - Filtered messages matching the query
  */
 function filterQueryClientSide(messages, queryText) {
-  const queryLower = queryText.toLowerCase();
+  // F-12: split multi-word queries on whitespace and require ALL words
+  // to be present (AND search). Previous behaviour was substring match
+  // on the literal phrase, which missed the common case where the
+  // user types e.g. "github token" expecting it to find a subject
+  // like "[GitHub] Your fine-grained personal access token".
+  const queryLower = queryText.toLowerCase().trim();
+  if (!queryLower) return messages;
+  const words = queryLower.split(/\s+/).filter(Boolean);
+
   return messages.filter((m) => {
-    const subject = (m.subject || '').toLowerCase();
-    const body = (m.bodyPreview || '').toLowerCase();
-    const fromAddr = (m.from?.emailAddress?.address || '').toLowerCase();
-    const fromName = (m.from?.emailAddress?.name || '').toLowerCase();
-    return (
-      subject.includes(queryLower) ||
-      body.includes(queryLower) ||
-      fromAddr.includes(queryLower) ||
-      fromName.includes(queryLower)
-    );
+    const haystack = [
+      m.subject,
+      m.bodyPreview,
+      m.from?.emailAddress?.address,
+      m.from?.emailAddress?.name,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return words.every((w) => haystack.includes(w));
   });
 }
 

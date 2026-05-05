@@ -10,6 +10,7 @@ const {
   StdioServerTransport,
 } = require('@modelcontextprotocol/sdk/server/stdio.js');
 const config = require('./config');
+const { coerceArgsAgainstSchema } = require('./utils/schema-coerce');
 
 // Import module tools
 const { authTools, setToolCount } = require('./auth');
@@ -25,6 +26,19 @@ const { advancedTools } = require('./advanced');
 // Log startup information
 console.error(`STARTING ${config.SERVER_NAME.toUpperCase()} MCP SERVER`);
 console.error(`Test mode is ${config.USE_TEST_MODE ? 'enabled' : 'disabled'}`);
+
+// F-1 / F-48: warn at startup when safety belts are unset. Mirrors the
+// warning surfaced by `auth action=about`. Visible to operators reading
+// stderr; AI clients reading the JSON-RPC stream are unaffected.
+if (
+  !process.env.OUTLOOK_MAX_EMAILS_PER_SESSION &&
+  !process.env.OUTLOOK_ALLOWED_RECIPIENTS &&
+  !config.USE_TEST_MODE
+) {
+  console.error(
+    '⚠ Safety belts not configured. Consider setting OUTLOOK_MAX_EMAILS_PER_SESSION and OUTLOOK_ALLOWED_RECIPIENTS in your .mcp.json env block for safer AI-assisted sending. See `auth action=about` for details.'
+  );
+}
 
 // Combine all tools
 const TOOLS = [
@@ -110,6 +124,25 @@ server.fallbackRequestHandler = async (request) => {
         const tool = TOOLS.find((t) => t.name === name);
 
         if (tool && tool.handler) {
+          // Coerce + validate args against the tool's inputSchema before
+          // dispatching. Catches array-as-string, boolean-as-string, unknown
+          // params, and out-of-enum action values at the MCP boundary so
+          // handlers receive properly-typed JS values. (#160, #162)
+          if (tool.inputSchema) {
+            const coerced = coerceArgsAgainstSchema(args, tool.inputSchema);
+            if (coerced.error) {
+              return {
+                content: [
+                  {
+                    type: 'text',
+                    text: `Invalid arguments for tool '${name}':\n${coerced.error}`,
+                  },
+                ],
+                isError: true,
+              };
+            }
+            return await tool.handler(coerced.args);
+          }
           return await tool.handler(args);
         }
 

@@ -37,7 +37,10 @@ const EXPORT_FORMATS = {
 async function handleExportEmail(args) {
   const emailId = args.id;
   const format = (args.format || EXPORT_FORMATS.MARKDOWN).toLowerCase();
-  const savePath = args.savePath;
+  // F-27: accept `outputDir` (canonical) and `savePath` (legacy alias).
+  // Previously single-message exports ignored outputDir entirely and
+  // hardcoded os.tmpdir(), inconsistent with target=messages.
+  const savePath = args.outputDir || args.savePath;
   const includeAttachments = args.includeAttachments !== false;
 
   if (!emailId) {
@@ -116,16 +119,30 @@ async function handleExportEmail(args) {
     } else if (format === EXPORT_FORMATS.CSV) {
       // CSV export - email metadata
       content = formatEmailsAsCSV(email);
+    } else if (format === 'mbox' || format === 'html') {
+      // F-26: clarify that mbox/html are conversation-only formats so
+      // callers don't infer the format itself is unsupported.
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Format '${format}' is only supported for target=conversation. For target=message use one of: ${Object.values(EXPORT_FORMATS).join(', ')}.`,
+          },
+        ],
+      };
     } else {
       return {
         content: [
           {
             type: 'text',
-            text: `Unknown format: ${format}. Supported: ${Object.values(EXPORT_FORMATS).join(', ')}`,
+            text: `Unknown format: ${format}. Supported for target=message: ${Object.values(EXPORT_FORMATS).join(', ')}.`,
           },
         ],
       };
     }
+
+    // Auto-create the parent directory so callers don't have to pre-mkdir.
+    fs.mkdirSync(path.dirname(finalPath), { recursive: true });
 
     // Save main file
     fs.writeFileSync(finalPath, content, 'utf8');
@@ -207,7 +224,13 @@ async function handleExportEmail(args) {
  */
 async function handleBatchExportEmails(args) {
   const emailIds = args.emailIds || [];
-  const searchQuery = args.searchQuery || {};
+  // F-28: accept `query` as a top-level string alias for
+  // `searchQuery: { subject }`. Lets callers use the same `query`
+  // word they already know from search-emails.
+  const searchQuery = { ...(args.searchQuery || {}) };
+  if (args.query && !searchQuery.subject) {
+    searchQuery.subject = args.query;
+  }
   const format = (args.format || EXPORT_FORMATS.MARKDOWN).toLowerCase();
   const outputDir = args.outputDir;
   const includeAttachments = args.includeAttachments === true; // Default false for batch

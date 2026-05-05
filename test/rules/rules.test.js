@@ -174,6 +174,9 @@ describe('handleCreateRule', () => {
 
     expect(result.content[0].text).toContain('Successfully created rule');
     expect(result.content[0].text).toContain('Test Rule');
+    // F-43: rule ID surfaced in response and _meta
+    expect(result.content[0].text).toMatch(/\*\*ID\*\*: new-rule-id/);
+    expect(result._meta.ruleId).toBe('new-rule-id');
   });
 
   it('should create a rule with subject condition and markAsRead', async () => {
@@ -420,7 +423,7 @@ describe('handleUpdateRule', () => {
     expect(patchCall[3].displayName).toBe('Renamed Rule');
   });
 
-  it('should update rule enabled state', async () => {
+  it('should update rule enabled state with before/after rendering (F-45)', async () => {
     callGraphAPI.mockResolvedValueOnce({ value: mockRules });
     callGraphAPI.mockResolvedValueOnce({});
 
@@ -429,7 +432,23 @@ describe('handleUpdateRule', () => {
       isEnabled: false,
     });
 
-    expect(result.content[0].text).toContain('disabled');
+    // The previous bare 'enabled'/'disabled' string was ambiguous —
+    // now show explicit transition.
+    expect(result.content[0].text).toContain('isEnabled: true → false');
+  });
+
+  it('should render rename with before/after (F-45)', async () => {
+    callGraphAPI.mockResolvedValueOnce({ value: mockRules });
+    callGraphAPI.mockResolvedValueOnce({});
+
+    const result = await handleUpdateRule({
+      ruleName: 'Move newsletters',
+      name: 'Renamed',
+    });
+
+    expect(result.content[0].text).toContain(
+      'name: "Move newsletters" → "Renamed"'
+    );
   });
 
   it('should update conditions (replace)', async () => {

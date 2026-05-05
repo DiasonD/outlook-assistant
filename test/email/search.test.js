@@ -236,6 +236,35 @@ describe('filterQueryClientSide', () => {
     const result = filterQueryClientSide(messages, 'nonexistent');
     expect(result).toHaveLength(0);
   });
+
+  test('multi-word query splits on whitespace and ANDs (F-12)', () => {
+    const githubMessages = [
+      mockEmail({
+        id: 'gh1',
+        subject: '[GitHub] Your fine-grained personal access token',
+        bodyPreview: 'A token was created on your account.',
+      }),
+      mockEmail({
+        id: 'unrelated',
+        subject: 'Order confirmation',
+        bodyPreview: 'Thanks for your purchase.',
+      }),
+    ];
+    // Previously this would have failed because no field contained
+    // the literal phrase "github token"; F-12 changed the matcher to
+    // require all whitespace-separated words to be present (in any
+    // order, anywhere in subject/body/from).
+    const result = filterQueryClientSide(githubMessages, 'github token');
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('gh1');
+  });
+
+  test('multi-word query rejects when not all words present', () => {
+    // 'unicorn' appears nowhere; even though 'tax' is present in
+    // multiple messages, the AND requirement fails.
+    const result = filterQueryClientSide(messages, 'tax unicorn');
+    expect(result).toHaveLength(0);
+  });
 });
 
 // ──────────────────────────────────────────────────
@@ -313,6 +342,101 @@ describe('handleSearchEmails — silent fallback prevention', () => {
 
     expect(result._meta.returned).toBe(2);
     expect(result.content[0].text).toContain('Search Results');
+  });
+});
+
+// ──────────────────────────────────────────────────
+// handleSearchEmails — kqlQuery branch (#169)
+// ──────────────────────────────────────────────────
+describe('handleSearchEmails — kqlQuery silent-drop prevention (#169)', () => {
+  test('returns 0 results (with guidance) when kqlQuery matches nothing — no fallthrough to combined-search', async () => {
+    // The bug: previous behaviour would call Graph $search, get [],
+    // then *fall through* to combined-search, which would run
+    // *without* the kqlQuery filter and return unrelated recent emails.
+    callGraphAPIPaginated.mockResolvedValue({ value: [] });
+
+    const result = await handleSearchEmails({
+      kqlQuery: 'subject:"personal access token"',
+      searchAllFolders: true,
+    });
+
+    expect(result.content[0].text).toContain('No emails found');
+    expect(result._meta.returned).toBe(0);
+    // Critical: the only Graph call should have been the kqlQuery one;
+    // we must NOT fall through to combined-search and re-query without
+    // the filter.
+    expect(callGraphAPIPaginated).toHaveBeenCalledTimes(1);
+    // strategy line should be raw-kql, never combined-search
+    expect(result._meta.searchMetadata.finalStrategy).toBe('raw-kql');
+  });
+
+  test('returns kqlQuery results when Graph returns matches', async () => {
+    const emails = [mockEmail({ id: '1', subject: 'PR review' })];
+    callGraphAPIPaginated.mockResolvedValue({ value: emails });
+
+    const result = await handleSearchEmails({
+      kqlQuery: 'subject:PR',
+    });
+
+    expect(result._meta.returned).toBe(1);
+    expect(result._meta.searchMetadata.finalStrategy).toBe('raw-kql');
+    expect(callGraphAPIPaginated).toHaveBeenCalledTimes(1);
+  });
+
+  test('does NOT auto-wrap a kqlQuery that already contains quotes', async () => {
+    callGraphAPIPaginated.mockResolvedValue({ value: [] });
+
+    await handleSearchEmails({
+      kqlQuery: 'subject:"personal access token"',
+    });
+
+    // Inspect the params passed to Graph — $search should be the
+    // *original* string, not double-wrapped to `"subject:"foo""`.
+    const [, , , params] = callGraphAPIPaginated.mock.calls[0];
+    expect(params.$search).toBe('subject:"personal access token"');
+  });
+
+  test('does NOT auto-wrap a kqlQuery that contains a colon (KQL field syntax)', async () => {
+    callGraphAPIPaginated.mockResolvedValue({ value: [] });
+
+    await handleSearchEmails({ kqlQuery: 'from:github.com' });
+
+    const [, , , params] = callGraphAPIPaginated.mock.calls[0];
+    expect(params.$search).toBe('from:github.com');
+  });
+
+  test('quotes a bare single-token kqlQuery so Graph treats it as a phrase', async () => {
+    callGraphAPIPaginated.mockResolvedValue({ value: [] });
+
+    await handleSearchEmails({ kqlQuery: 'invoice' });
+
+    const [, , , params] = callGraphAPIPaginated.mock.calls[0];
+    expect(params.$search).toBe('"invoice"');
+  });
+
+  test('does NOT auto-wrap a multi-word kqlQuery (whitespace = trust caller)', async () => {
+    callGraphAPIPaginated.mockResolvedValue({ value: [] });
+
+    await handleSearchEmails({ kqlQuery: 'invoice OR receipt' });
+
+    const [, , , params] = callGraphAPIPaginated.mock.calls[0];
+    expect(params.$search).toBe('invoice OR receipt');
+  });
+
+  test('surfaces Graph errors instead of falling through to unrelated results', async () => {
+    callGraphAPIPaginated.mockRejectedValueOnce(
+      new Error('Graph 400: invalid $search syntax')
+    );
+
+    const result = await handleSearchEmails({
+      kqlQuery: 'badly-formed:::query',
+    });
+
+    expect(result._meta.returned).toBe(0);
+    // Final strategy should be the raw-kql-error marker, not a
+    // misleading "combined-search" line.
+    expect(result._meta.searchMetadata.finalStrategy).toBe('raw-kql-error');
+    expect(callGraphAPIPaginated).toHaveBeenCalledTimes(1);
   });
 });
 

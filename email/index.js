@@ -137,6 +137,7 @@ const emailTools = [
             'Include email headers for each message (conversationId only)',
         },
       },
+      additionalProperties: false,
       required: [],
     },
     handler: async (args) => {
@@ -223,6 +224,7 @@ const emailTools = [
             'Return raw JSON instead of Markdown (headersMode only, default: false)',
         },
       },
+      additionalProperties: false,
       required: ['id'],
     },
     handler: async (args) => {
@@ -286,6 +288,7 @@ const emailTools = [
             'Check recipients for out-of-office, mailbox full, delivery restrictions before sending (default: false). Combine with dryRun=true for pre-send review.',
         },
       },
+      additionalProperties: false,
       required: ['to', 'subject', 'body'],
     },
     handler: handleSendEmail,
@@ -364,6 +367,7 @@ const emailTools = [
             'Check recipients for out-of-office, delivery restrictions before saving (action=create, default: false)',
         },
       },
+      additionalProperties: false,
       required: ['action'],
     },
     handler: handleDraft,
@@ -408,6 +412,7 @@ const emailTools = [
           description: 'Start date/time for follow-up, ISO 8601 (action=flag)',
         },
       },
+      additionalProperties: false,
       required: ['action'],
     },
     handler: async (args) => {
@@ -473,12 +478,18 @@ const emailTools = [
           type: 'string',
           description: 'Attachment ID (action=view/download, required)',
         },
+        outputDir: {
+          type: 'string',
+          description:
+            'Directory to save file (action=download, default: system tmpdir). Auto-created if missing.',
+        },
         savePath: {
           type: 'string',
           description:
-            'Directory to save file (action=download, default: current directory)',
+            'DEPRECATED alias for `outputDir`. Will be removed in v3.8.0.',
         },
       },
+      additionalProperties: false,
       required: ['messageId'],
     },
     handler: async (args) => {
@@ -489,8 +500,16 @@ const emailTools = [
         case 'download':
           return handleDownloadAttachment(args);
         case 'list':
-        default:
           return handleListAttachments(args);
+        default:
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Unknown action '${action}'. Valid actions: list, view, download.`,
+              },
+            ],
+          };
       }
     },
   },
@@ -521,7 +540,7 @@ const emailTools = [
           type: 'string',
           enum: ['mime', 'eml', 'markdown', 'json', 'mbox', 'html', 'csv'],
           description:
-            'Export format (target=message: mime/eml/markdown/json/csv, target=conversation: eml/mbox/markdown/json/html/csv)',
+            'Export format. Valid values vary by target: target=message accepts mime/eml/markdown/json/csv (mbox and html are conversation-only). target=conversation accepts eml/mbox/markdown/json/html/csv. target=messages (batch) accepts markdown/json/csv. mime is an alias for eml (same RFC822 bytes, .eml extension on disk).',
         },
         savePath: {
           type: 'string',
@@ -550,6 +569,11 @@ const emailTools = [
           },
           description:
             'Search query to find emails (target=messages, alternative to emailIds)',
+        },
+        query: {
+          type: 'string',
+          description:
+            'Free-text search shortcut (target=messages). Equivalent to passing searchQuery: { subject: <query> }. Convenience alias for callers used to search-emails.',
         },
         outputDir: {
           type: 'string',
@@ -581,6 +605,7 @@ const emailTools = [
           description: 'Max content size in bytes (target=mime, default: 1MB)',
         },
       },
+      additionalProperties: false,
       required: [],
     },
     handler: async (args) => {
@@ -593,8 +618,16 @@ const emailTools = [
         case 'mime':
           return handleGetMimeContent(args);
         case 'message':
-        default:
           return handleExportEmail(args);
+        default:
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Unknown export target '${target}'. Valid targets: message, messages, conversation, mime.`,
+              },
+            ],
+          };
       }
     },
   },
@@ -630,6 +663,7 @@ const emailTools = [
             'Comma-separated tip types to request (default: all). Options: automaticReplies, mailboxFullStatus, customMailTip, externalMemberCount, totalMemberCount, maxMessageSize, deliveryRestriction, moderationStatus, recipientScope, recipientSuggestions',
         },
       },
+      additionalProperties: false,
       required: ['recipients'],
     },
     handler: handleGetMailTips,

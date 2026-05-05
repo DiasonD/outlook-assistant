@@ -7,6 +7,249 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.7.4] - 2026-05
+
+Patch release closing two regressions surfaced by an independent
+v3.7.3 E2E re-verification against a live personal Outlook.com
+mailbox. The v3.7.3 release tag is left in place; v3.7.4 ships the
+post-tag bug fixes plus the new patches below so the version users
+install actually contains the fixes the version claims.
+
+### Fixed
+
+- **F-24 chokepoint catches JSON-stringified arrays** — the original
+  v3.7.3 fix only rejected live JS arrays in string-typed recipient
+  params. In practice some MCP transports JSON-stringify array
+  literals before transmission when the schema declares
+  `type: "string"`, so the chokepoint received the literal string
+  `'["a@x.com"]'` (brackets and quotes intact) and `Array.isArray`
+  returned false. The user-visible failure mode (Graph 400
+  `ErrorInvalidRecipients`) was unchanged. The check now also
+  detects strings that parse as JSON arrays and rejects them with
+  the same friendly hint, including the comma-joined form callers
+  should pass instead. False-positive guards verified against
+  bracketed subjects (`[GitHub] PR opened`) and malformed brackets.
+  (#168)
+- **`search-emails kqlQuery` no longer silently dropped** — two
+  bugs in `progressiveSearch` Step 0:
+  1. The kqlQuery was auto-wrapped in extra double quotes, breaking
+     any caller using KQL field syntax (e.g. `subject:"foo bar"`
+     became `"subject:"foo bar""` — broken nested quotes that Graph
+     parsed unpredictably or failed to honour).
+  2. If Step 0 returned 0 results (often a side-effect of bug 1),
+     execution silently fell through to combined-search, which ran
+     *without* the kqlQuery filter and returned recent unfiltered
+     messages with a misleading `combined-search` strategy line.
+  Fixed: don't auto-wrap quoted/multi-word/colon-bearing kqlQuery
+  values; only quote bare single tokens. Always return from the
+  raw-KQL branch — never fall through. Empty results carry
+  `noResults: true` so the formatter shows the helpful suggestions
+  block. Errors carry a `kqlError` marker and a `raw-kql-error`
+  strategy line for programmatic detection. (#169)
+- **F-17 `maxResults` alias in list mode** — wired through both
+  `email/search.js` and `email/list.js` so `search-emails
+  folder=junk maxResults=5` returns 5 results, not the previous 25.
+  (Originally part of post-tag commit `9b4373a`, included here for
+  the merged release notes.)
+
+### Tests
+
+- 690 → 708 passing tests, 26 suites, 0 failures (+18 regression
+  cases): 5 for #168 covering both array forms, whitespace,
+  multi-element arrays, and false-positive guards; 7 for #169
+  covering silent-drop prevention, no-double-wrap on quoted/colon/
+  multi-word KQL, single-token auto-wrap, and error surfacing.
+
+### Documentation
+
+- Added `ROADMAP.md` covering the active v3.7.5, v3.8.0, and v3.9.0
+  milestones plus a recently-shipped section. Linked from `README.md`.
+  Resolves the "no published roadmap to compare against" gap surfaced
+  during the v3.7.2 build-page audit (littlebearapps/littlebearapps.com#142).
+- Added `docs/faq/index.md` — 11 question/answer pairs covering install,
+  account compatibility, Microsoft Graph permissions, token storage,
+  read-only mode, Azure registration, device-code-vs-browser auth,
+  updates, uninstall, privacy, and getting help. Linked from
+  `docs/README.md`. The marketing-site help-centre infrastructure
+  emits Schema.org `FAQPage` JSON-LD from this file once the matching
+  `scripts/docs-sync.config.ts` mapping lands in
+  `littlebearapps/littlebearapps.com`. (#167)
+- Updated `docs/troubleshooting.md` with two new rows: one for the
+  `send-email` `ErrorInvalidRecipients` regression closed by #168, one
+  for the `kqlQuery` silent-drop closed by V37-F-1 of #169.
+- Bumped how-to-guide count in README from 28 → 29 (matches actual
+  count under `docs/how-to/`).
+
+### Deferred to v3.8.0
+
+- **V37-F-2** — `searchAllFolders=true` returning fewer matches than
+  inbox-only `query` searches on personal Outlook.com. Needs a Graph
+  `$search` semantics audit and possibly a client-side cross-folder
+  fanout fallback. Tracked under #169.
+- **V37-F-3 / F-12 edge case** — multi-word query AND-match misses
+  subjects with bracket-prefixed tokens like `[GitHub] A fine-grained
+  personal access token has been added`. Tracked under #138.
+- **noResults rendering** says "in 'inbox'" even when
+  `searchAllFolders=true` was passed. Cosmetic; underlying
+  `_searchInfo` strategy is correct.
+- Renaming `kqlQuery` to something less misleading — Microsoft Graph
+  `$search` is not full KQL.
+
+## [3.7.3] - 2026-05
+
+E2E sweep findings fix-up. The previous session ran a full manual sweep
+of every tool/action permutation against a live personal Outlook.com
+mailbox and filed 48 findings across 7 GitHub issues (#159 tracker,
+#160-#165 themes). v3.7.3 fixes them.
+
+### Fixed
+
+- **MCP boundary param coercion** — most MCP clients deliver array,
+  boolean, integer, and number params as JSON-encoded strings. Handlers
+  were written assuming JS-typed values, so mismatches surfaced as
+  per-character Graph errors (`update-email ids`), silent no-ops
+  (`manage-rules isEnabled`, `markAsRead`, `includeDetails`), or
+  silently-ignored params (`folders includeItemCounts`). A single
+  chokepoint in `index.js` now walks each tool's `inputSchema` once
+  and coerces values into the right JS type before dispatch — no
+  per-handler edits needed. (#160)
+- **`update-email ids` array iterates char-by-char** — batch flag /
+  unflag / complete operations now work. Was completely broken; one
+  call could produce 400+ Graph errors. (F-25)
+- **`apply-category categories` array has no working shape** — array
+  param now deserialises properly. The categorisation pathway via
+  `apply-category` was unusable from MCP. (F-33, F-36)
+- **`manage-rules` boolean params silently ignored** — `isEnabled`,
+  `markAsRead`, `includeDetails` are now honoured. Update output
+  shows explicit before/after (`isEnabled: true → false`). (F-42, F-44, F-45)
+- **`search-emails query="multi word"` misses obvious matches** —
+  client-side fallback now splits on whitespace and AND-matches all
+  words across subject/body/from. The flagship "progressive search
+  finds emails Microsoft's `$search` API misses" claim now actually
+  works for the common multi-word case. (F-12)
+- **`set-auto-replies enabled=false` doesn't transition `scheduled`
+  → `disabled`** — schedule timestamps are now explicitly cleared on
+  disable, so the state actually flips. Was the cleanup-blocker for
+  the v3.7.2 E2E sweep. (F-6)
+- **`set-auto-replies enabled=true` (no schedule) silently coerced to
+  disabled on personal accounts** — divergence between requested and
+  Graph-applied status now surfaces a warning explaining the
+  personal-account constraint. (F-7)
+- **`set-auto-replies` with only `externalAudience` claims "updated"**
+  — now clarifies "no status change applied; only externalAudience
+  was updated" so callers don't think the state flipped. (F-4)
+- **`manage-category set color=…` is a silent no-op** — handler now
+  re-fetches after PATCH and warns when Graph stored something
+  different (master-category colors are immutable on some account
+  types). (F-35)
+- **`manage-category list` truncates IDs with ellipsis** — full IDs
+  emitted at standard verbosity so they can be copy-pasted. (F-9)
+- **`manage-contact update jobTitle` shows up as "Company"** —
+  formatter now emits separate "Job Title" and "Company" lines instead
+  of squashing both into a single "Company" line. (F-40)
+- **`attachments download outputDir`, `export target=message
+  outputDir`, `export target=conversation outputDir` ignored or
+  inconsistent** — all now honour `outputDir`, default to
+  `os.tmpdir()` instead of cwd, and auto-create the target directory.
+  Adds a deprecated `savePath` alias for the original schema name.
+  (F-19, F-27, F-29)
+- **`read-email` body output leaks tracking-pixel zero-width chars** —
+  `formatEmailContent` now strips `U+200B..U+200F`, `U+2060`, `U+FEFF`,
+  and the corresponding HTML entities (`&#8203;`, `&zwj;`, etc.) before
+  returning. Hundreds of these were bloating token usage on Gmail-style
+  messages. (F-16)
+- **`search-emails maxResults` ignored in non-delta mode** — handler
+  now accepts `maxResults` as an alias for `count` in both search
+  and list paths. (F-17)
+- **MCP chokepoint coercion silently passed arrays through to
+  string-typed params** — `to`, `cc`, `bcc`, etc. accept comma-
+  separated strings, but an array literal slipped through as a
+  JSON-stringified value and bounced off Graph as an opaque 400.
+  The string branch now rejects arrays at the MCP boundary with
+  `expected comma-separated string, got array — pass "a,b" instead
+  of ["a","b"]`. (F-24)
+- **Delta-sync mislabels nextLink as "Delta Token"** — output now
+  distinguishes a continuation token (more pages of the same sync)
+  from a real delta token (sync complete). `_meta.tokenType` exposes
+  the distinction programmatically. (F-15)
+- **`folders create` and `manage-rules create` don't return the new
+  ID** — both now include `**ID**: <id>` in the response and surface
+  the ID in `_meta`. (F-31, F-43)
+- **Multi-action tools silently route typos to list/get** — every
+  multi-action tool's switch default now returns an explicit "Unknown
+  action 'X'. Valid actions: …" error. The MCP boundary enum
+  validation also rejects out-of-enum action values. (F-5, F-32, #162)
+- **`manage-event accept` deliberately omitted** — documented in
+  CLAUDE.md and tools-reference rather than left as a silent gap.
+  Microsoft Graph doesn't expose an accept verb that works
+  reliably on personal Outlook.com calendars. (F-38)
+- **`get-mail-tips` reports "No issues detected" for invalid
+  recipients on personal accounts** — now detects empty Graph
+  responses (M365-only feature) and explicitly says "no warnings
+  flagged ≠ validated as deliverable" so callers don't get false
+  confidence. (F-23)
+- **`find-meeting-rooms` 404 wrapped with permission-style hint on
+  personal accounts** — now distinguishes "feature not available on
+  this account type" (clear M365-only message) from generic permission
+  errors. (F-47)
+- **`auth action=about` doesn't show the authenticated mailbox** —
+  output now includes `displayName <email>` at the top of the
+  diagnostics block via a single `GET /me` round-trip. (F-2)
+- **Safety-belt env vars off by default with no visible warning** —
+  `auth about` and server startup now warn when
+  `OUTLOOK_MAX_EMAILS_PER_SESSION` or `OUTLOOK_ALLOWED_RECIPIENTS`
+  are unset, with a copy-paste snippet for the .mcp.json env block.
+  Ships a `.mcp.json.example` with both vars pre-wired. (F-1, F-48)
+- **`manage-contact list` shows "Total: 50" with no pagination cue**
+  — now requests `$count: true` from Graph and surfaces "Showing N
+  of M" plus a "pass `skip: N`" hint when more pages exist. Adds a
+  `skip` schema param. (F-22)
+
+### Changed
+
+- **Strict parameter validation** — every tool now rejects unknown
+  parameters at the MCP boundary (`additionalProperties: false`).
+  Calls that previously silently ignored typos (e.g. `verbosity` on
+  `folders list`) now error with a clear list of valid params.
+  Authorised AI clients should be unaffected; clients depending on
+  silent-ignore behaviour will need to drop the bogus params. (F-10)
+- **Param-name aliases** — backwards-compatible aliases added so
+  callers don't have to remember per-tool naming:
+  `manage-event` accepts `id` (canonical) alongside `eventId`,
+  `manage-rules` accepts `displayName` alongside `name` (matches
+  Graph's own field name), `manage-category` accepts `categoryId`
+  (deprecated) alongside `id` and `set` (deprecated) alongside
+  `update`, `access-shared-mailbox` accepts `email` alongside
+  `sharedMailbox`, `manage-contact create` accepts `firstName` /
+  `lastName` / `emails` (mapped to Graph's `givenName` / `surname`
+  / `emailAddresses[]`), `attachments download` and `export
+  target=message` accept `outputDir` alongside `savePath`,
+  `export target=messages` accepts `query` as a shortcut for
+  `searchQuery: { subject }`. (#163)
+- **Export Formats — per-target support clarified** — README and
+  schema description now spell out which formats are valid for each
+  `target`. mbox/html are conversation-only; target=message rejects
+  them with a helpful message instead of "Unknown format". (F-26, F-30)
+- **README claim audit** — softened the email forensics claim to
+  reflect that the tool surfaces raw header data (DKIM, SPF, DMARC,
+  X-Mailer, X-Originating-IP, delivery chain) but does not yet emit
+  an automated phishing verdict. Updated Account Compatibility
+  table — Focused Inbox API works on personal Outlook.com but mail
+  routing is unaffected. Added a Recommended setup snippet under
+  Send-email protections showing the safety belts pre-wired. (F-11,
+  F-20, #164)
+
+### Added
+
+- **`utils/schema-coerce.js`** — JSON-schema-driven param coercion +
+  validation module used at the MCP boundary. 36 unit + integration
+  tests covering each coercion path, `additionalProperties`, enum,
+  and required validation against the real schemas.
+- **`.mcp.json.example`** — copy-paste config template with safety
+  env vars pre-wired and inline comments explaining each.
+- **Test suite expansion** — 82 new regression tests covering every
+  fix above. 608 → 690 passing tests.
+
 ## [3.7.2] - 2026-04
 
 ### Fixed
