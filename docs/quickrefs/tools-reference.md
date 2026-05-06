@@ -84,7 +84,7 @@ Quick reference for all 22 MCP tools across 9 modules. Each tool includes MCP sa
 |------|-------------|--------|----------------|
 | `list-events` | List upcoming events | read-only | `count` |
 | `create-event` | Create new event | moderate write | `subject`, `start`, `end`, `attendees`, `body`. Times use configured timezone (default: Australia/Melbourne) — omit `Z` suffix for local time |
-| `manage-event` | Update, decline, cancel, or delete | **destructive** | `action` (`update`/`decline`/`cancel`/`delete`), `eventId` (or alias `id`), `comment` (decline/cancel), `subject`/`start`/`end`/`attendees`/`body`/`location` (update only — only the fields you pass are changed) |
+| `manage-event` | Update, decline, cancel, or delete | **destructive** | `action` (`update`/`decline`/`cancel`/`delete`), `eventId` (or alias `id`), `comment` (decline/cancel), `subject`/`start`/`end`/`attendees`/`body`/`location`/`isOnlineMeeting`/`sensitivity`/`showAs`/`importance`/`categories`/`reminderMinutesBeforeStart` (update only — only the fields you pass are changed), `dryRun` (preview the PATCH without applying it) |
 
 ## Folder (1 tool)
 

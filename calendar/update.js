@@ -4,12 +4,45 @@
  * Wraps the Microsoft Graph PATCH /me/events/{id} endpoint. Sends only
  * the fields the caller provides — anything left out is preserved
  * server-side. Useful for re-scheduling, adding/removing attendees,
- * editing the body, or tweaking the subject without rebuilding the
- * event from scratch (which loses RSVP state).
+ * editing the body, or tweaking metadata without rebuilding the event
+ * from scratch (which loses RSVP state).
+ *
+ * Supports the following Graph event properties:
+ *   - subject
+ *   - start          (ISO string or {dateTime, timeZone} object)
+ *   - end            (same shape as start)
+ *   - attendees      (full replacement list of emails)
+ *   - body           (sent as HTML)
+ *   - location       (displayName)
+ *   - isOnlineMeeting
+ *   - sensitivity    (normal | personal | private | confidential)
+ *   - showAs         (free | tentative | busy | oof | workingElsewhere | unknown)
+ *   - importance     (low | normal | high)
+ *   - categories     (full replacement array of category names)
+ *   - reminderMinutesBeforeStart
+ *
+ * `dryRun: true` returns a preview of the PATCH payload without calling
+ * Graph — useful for confirming behaviour before mutating real data.
  */
 const { callGraphAPI } = require('../utils/graph-api');
 const { ensureAuthenticated } = require('../auth');
 const { DEFAULT_TIMEZONE } = require('../config');
+
+const SENSITIVITY_VALUES = new Set([
+  'normal',
+  'personal',
+  'private',
+  'confidential',
+]);
+const SHOW_AS_VALUES = new Set([
+  'free',
+  'tentative',
+  'busy',
+  'oof',
+  'workingElsewhere',
+  'unknown',
+]);
+const IMPORTANCE_VALUES = new Set(['low', 'normal', 'high']);
 
 /**
  * Update event handler
@@ -17,7 +50,22 @@ const { DEFAULT_TIMEZONE } = require('../config');
  * @returns {object} - MCP response
  */
 async function handleUpdateEvent(args) {
-  const { eventId, subject, start, end, attendees, body, location } = args;
+  const {
+    eventId,
+    subject,
+    start,
+    end,
+    attendees,
+    body,
+    location,
+    isOnlineMeeting,
+    sensitivity,
+    showAs,
+    importance,
+    categories,
+    reminderMinutesBeforeStart,
+    dryRun = false,
+  } = args;
 
   if (!eventId) {
     return {
@@ -68,14 +116,106 @@ async function handleUpdateEvent(args) {
     patch.location = { displayName: location };
   }
 
+  if (isOnlineMeeting !== undefined) {
+    patch.isOnlineMeeting = Boolean(isOnlineMeeting);
+  }
+
+  if (sensitivity !== undefined) {
+    if (!SENSITIVITY_VALUES.has(sensitivity)) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Invalid sensitivity: '${sensitivity}'. Must be one of: ${[...SENSITIVITY_VALUES].join(', ')}.`,
+          },
+        ],
+      };
+    }
+    patch.sensitivity = sensitivity;
+  }
+
+  if (showAs !== undefined) {
+    if (!SHOW_AS_VALUES.has(showAs)) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Invalid showAs: '${showAs}'. Must be one of: ${[...SHOW_AS_VALUES].join(', ')}.`,
+          },
+        ],
+      };
+    }
+    patch.showAs = showAs;
+  }
+
+  if (importance !== undefined) {
+    if (!IMPORTANCE_VALUES.has(importance)) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Invalid importance: '${importance}'. Must be one of: ${[...IMPORTANCE_VALUES].join(', ')}.`,
+          },
+        ],
+      };
+    }
+    patch.importance = importance;
+  }
+
+  if (categories !== undefined) {
+    // Full replacement, like attendees. Pass [] to clear all categories.
+    patch.categories = Array.isArray(categories) ? categories : [];
+  }
+
+  if (reminderMinutesBeforeStart !== undefined) {
+    const reminder = Number(reminderMinutesBeforeStart);
+    if (!Number.isFinite(reminder) || reminder < 0) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Invalid reminderMinutesBeforeStart: '${reminderMinutesBeforeStart}'. Must be a non-negative number.`,
+          },
+        ],
+      };
+    }
+    patch.reminderMinutesBeforeStart = reminder;
+  }
+
   if (Object.keys(patch).length === 0) {
     return {
       content: [
         {
           type: 'text',
-          text: 'No fields to update — provide at least one of: subject, start, end, attendees, body, location.',
+          text: 'No fields to update — provide at least one updatable field (subject, start, end, attendees, body, location, isOnlineMeeting, sensitivity, showAs, importance, categories, reminderMinutesBeforeStart).',
         },
       ],
+    };
+  }
+
+  // dryRun: don't touch Graph; just show the caller what would be sent.
+  if (dryRun) {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: [
+            `**Dry run** — would PATCH \`me/events/${eventId}\` with:`,
+            '',
+            '```json',
+            JSON.stringify(patch, null, 2),
+            '```',
+            '',
+            `Fields that would change: ${Object.keys(patch).join(', ')}`,
+          ].join('\n'),
+        },
+      ],
+      _meta: {
+        eventId,
+        dryRun: true,
+        patch,
+        fieldsChanged: Object.keys(patch),
+      },
     };
   }
 

@@ -198,4 +198,186 @@ describe('handleUpdateEvent', () => {
       expect.arrayContaining(['subject', 'location'])
     );
   });
+
+  // ── Extended fields per issue #124 ───────────────────────────────────
+
+  test('updates isOnlineMeeting flag', async () => {
+    ensureAuthenticated.mockResolvedValue('dummy_access_token');
+    callGraphAPI.mockResolvedValue({ id: 'evt_1' });
+
+    await handleUpdateEvent({ eventId: 'evt_1', isOnlineMeeting: true });
+
+    const body = callGraphAPI.mock.calls[0][3];
+    expect(body.isOnlineMeeting).toBe(true);
+  });
+
+  test('coerces truthy/falsy isOnlineMeeting to a real boolean', async () => {
+    ensureAuthenticated.mockResolvedValue('dummy_access_token');
+    callGraphAPI.mockResolvedValue({ id: 'evt_1' });
+
+    await handleUpdateEvent({ eventId: 'evt_1', isOnlineMeeting: 0 });
+
+    const body = callGraphAPI.mock.calls[0][3];
+    expect(body.isOnlineMeeting).toBe(false);
+  });
+
+  test('updates sensitivity when value is allowed', async () => {
+    ensureAuthenticated.mockResolvedValue('dummy_access_token');
+    callGraphAPI.mockResolvedValue({ id: 'evt_1' });
+
+    await handleUpdateEvent({ eventId: 'evt_1', sensitivity: 'private' });
+
+    const body = callGraphAPI.mock.calls[0][3];
+    expect(body.sensitivity).toBe('private');
+  });
+
+  test('rejects an invalid sensitivity value', async () => {
+    const result = await handleUpdateEvent({
+      eventId: 'evt_1',
+      sensitivity: 'top-secret',
+    });
+    expect(result.content[0].text).toMatch(/Invalid sensitivity/);
+    expect(callGraphAPI).not.toHaveBeenCalled();
+  });
+
+  test('updates showAs when value is allowed', async () => {
+    ensureAuthenticated.mockResolvedValue('dummy_access_token');
+    callGraphAPI.mockResolvedValue({ id: 'evt_1' });
+
+    await handleUpdateEvent({ eventId: 'evt_1', showAs: 'tentative' });
+
+    const body = callGraphAPI.mock.calls[0][3];
+    expect(body.showAs).toBe('tentative');
+  });
+
+  test('rejects an invalid showAs value', async () => {
+    const result = await handleUpdateEvent({
+      eventId: 'evt_1',
+      showAs: 'distracted',
+    });
+    expect(result.content[0].text).toMatch(/Invalid showAs/);
+    expect(callGraphAPI).not.toHaveBeenCalled();
+  });
+
+  test('updates importance when value is allowed', async () => {
+    ensureAuthenticated.mockResolvedValue('dummy_access_token');
+    callGraphAPI.mockResolvedValue({ id: 'evt_1' });
+
+    await handleUpdateEvent({ eventId: 'evt_1', importance: 'high' });
+
+    const body = callGraphAPI.mock.calls[0][3];
+    expect(body.importance).toBe('high');
+  });
+
+  test('rejects an invalid importance value', async () => {
+    const result = await handleUpdateEvent({
+      eventId: 'evt_1',
+      importance: 'urgent',
+    });
+    expect(result.content[0].text).toMatch(/Invalid importance/);
+    expect(callGraphAPI).not.toHaveBeenCalled();
+  });
+
+  test('replaces categories with the supplied list', async () => {
+    ensureAuthenticated.mockResolvedValue('dummy_access_token');
+    callGraphAPI.mockResolvedValue({ id: 'evt_1' });
+
+    await handleUpdateEvent({
+      eventId: 'evt_1',
+      categories: ['Personal', 'Travel'],
+    });
+
+    const body = callGraphAPI.mock.calls[0][3];
+    expect(body.categories).toEqual(['Personal', 'Travel']);
+  });
+
+  test('clears categories when an empty array is passed', async () => {
+    ensureAuthenticated.mockResolvedValue('dummy_access_token');
+    callGraphAPI.mockResolvedValue({ id: 'evt_1' });
+
+    await handleUpdateEvent({ eventId: 'evt_1', categories: [] });
+
+    const body = callGraphAPI.mock.calls[0][3];
+    expect(body.categories).toEqual([]);
+  });
+
+  test('updates reminderMinutesBeforeStart when given a valid number', async () => {
+    ensureAuthenticated.mockResolvedValue('dummy_access_token');
+    callGraphAPI.mockResolvedValue({ id: 'evt_1' });
+
+    await handleUpdateEvent({
+      eventId: 'evt_1',
+      reminderMinutesBeforeStart: 30,
+    });
+
+    const body = callGraphAPI.mock.calls[0][3];
+    expect(body.reminderMinutesBeforeStart).toBe(30);
+  });
+
+  test('rejects a negative reminderMinutesBeforeStart', async () => {
+    const result = await handleUpdateEvent({
+      eventId: 'evt_1',
+      reminderMinutesBeforeStart: -5,
+    });
+    expect(result.content[0].text).toMatch(
+      /Invalid reminderMinutesBeforeStart/
+    );
+    expect(callGraphAPI).not.toHaveBeenCalled();
+  });
+
+  test('rejects a non-numeric reminderMinutesBeforeStart', async () => {
+    const result = await handleUpdateEvent({
+      eventId: 'evt_1',
+      reminderMinutesBeforeStart: 'soon',
+    });
+    expect(result.content[0].text).toMatch(
+      /Invalid reminderMinutesBeforeStart/
+    );
+    expect(callGraphAPI).not.toHaveBeenCalled();
+  });
+
+  // ── dryRun ───────────────────────────────────────────────────────────
+
+  test('dryRun returns the patch payload without calling Graph', async () => {
+    ensureAuthenticated.mockResolvedValue('dummy_access_token');
+
+    const result = await handleUpdateEvent({
+      eventId: 'evt_1',
+      subject: 'Preview',
+      importance: 'high',
+      dryRun: true,
+    });
+
+    expect(callGraphAPI).not.toHaveBeenCalled();
+    expect(result.content[0].text).toMatch(/Dry run/);
+    expect(result.content[0].text).toMatch(/Preview/);
+    expect(result.content[0].text).toMatch(/high/);
+    expect(result._meta.dryRun).toBe(true);
+    expect(result._meta.patch).toEqual({
+      subject: 'Preview',
+      importance: 'high',
+    });
+    expect(result._meta.fieldsChanged).toEqual(
+      expect.arrayContaining(['subject', 'importance'])
+    );
+  });
+
+  test('dryRun still rejects invalid enum values before responding', async () => {
+    const result = await handleUpdateEvent({
+      eventId: 'evt_1',
+      sensitivity: 'top-secret',
+      dryRun: true,
+    });
+    expect(result.content[0].text).toMatch(/Invalid sensitivity/);
+    expect(callGraphAPI).not.toHaveBeenCalled();
+  });
+
+  test('dryRun still requires at least one updatable field', async () => {
+    const result = await handleUpdateEvent({
+      eventId: 'evt_1',
+      dryRun: true,
+    });
+    expect(result.content[0].text).toMatch(/No fields to update/);
+    expect(callGraphAPI).not.toHaveBeenCalled();
+  });
 });

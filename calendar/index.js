@@ -129,6 +129,48 @@ const calendarTools = [
           type: 'string',
           description: 'New location display name (action=update only)',
         },
+        isOnlineMeeting: {
+          type: 'boolean',
+          description: 'Toggle online meeting flag (action=update only)',
+        },
+        sensitivity: {
+          type: 'string',
+          enum: ['normal', 'personal', 'private', 'confidential'],
+          description: 'Event sensitivity classification (action=update only)',
+        },
+        showAs: {
+          type: 'string',
+          enum: [
+            'free',
+            'tentative',
+            'busy',
+            'oof',
+            'workingElsewhere',
+            'unknown',
+          ],
+          description: 'Free/busy status shown to others (action=update only)',
+        },
+        importance: {
+          type: 'string',
+          enum: ['low', 'normal', 'high'],
+          description: 'Event importance flag (action=update only)',
+        },
+        categories: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'Full replacement category list — pass [] to clear (action=update only)',
+        },
+        reminderMinutesBeforeStart: {
+          type: 'number',
+          description:
+            'Minutes before start to fire the reminder (action=update only)',
+        },
+        dryRun: {
+          type: 'boolean',
+          description:
+            'Preview the PATCH without applying it (action=update only). Returns the body that would be sent to Graph.',
+        },
       },
       additionalProperties: false,
       required: ['action'],
