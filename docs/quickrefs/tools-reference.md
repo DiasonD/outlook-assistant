@@ -83,7 +83,7 @@ Quick reference for all 22 MCP tools across 9 modules. Each tool includes MCP sa
 | Tool | Description | Safety | Key Parameters |
 |------|-------------|--------|----------------|
 | `list-events` | List upcoming events | read-only | `count` |
-| `create-event` | Create new event | moderate write | `subject`, `start`, `end`, `attendees`, `body`. Times use configured timezone (default: Australia/Melbourne) — omit `Z` suffix for local time |
+| `create-event` | Create new event | moderate write | `subject`, `start`, `end`, `attendees`, `body`. Times use configured timezone (default: Australia/Melbourne; override with `OUTLOOK_DEFAULT_TIMEZONE` env var) — omit `Z` suffix for local time |
 | `manage-event` | Decline, cancel, or delete | **destructive** | `action` (`decline`/`cancel`/`delete`), `eventId` (or alias `id`), `comment` |
 
 ## Folder (1 tool)
