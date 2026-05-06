@@ -60,6 +60,12 @@ describe('OUTLOOK_AUTH_AUDIENCE', () => {
     expect(AUTH_CONFIG.tokenEndpoint).toBe(
       'https://login.microsoftonline.com/organizations/oauth2/v2.0/token'
     );
+    expect(AUTH_CONFIG.deviceCodeEndpoint).toBe(
+      'https://login.microsoftonline.com/organizations/oauth2/v2.0/devicecode'
+    );
+    expect(AUTH_CONFIG.authorizeEndpoint).toBe(
+      'https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize'
+    );
   });
 
   test('accepts a tenant GUID for single-tenant apps', () => {
@@ -69,6 +75,9 @@ describe('OUTLOOK_AUTH_AUDIENCE', () => {
     expect(AUTH_CONFIG.audience).toBe(tenantId);
     expect(AUTH_CONFIG.tokenEndpoint).toBe(
       `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`
+    );
+    expect(AUTH_CONFIG.deviceCodeEndpoint).toBe(
+      `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/devicecode`
     );
     expect(AUTH_CONFIG.authorizeEndpoint).toBe(
       `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize`

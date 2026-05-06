@@ -39,7 +39,8 @@ const { AUTH_CONFIG: centralAuth } = require('./config');
 // Log to console
 console.log('Starting Outlook Authentication Server');
 
-// Authentication configuration — scopes and tokenStorePath from config.js (single source of truth)
+// Authentication configuration — scopes, tokenStorePath, and audience-driven
+// endpoints sourced from config.js (single source of truth).
 const AUTH_CONFIG = {
   clientId: process.env.OUTLOOK_CLIENT_ID || process.env.MS_CLIENT_ID || '',
   clientSecret:
@@ -47,6 +48,8 @@ const AUTH_CONFIG = {
   redirectUri: centralAuth.redirectUri,
   scopes: centralAuth.scopes,
   tokenStorePath: centralAuth.tokenStorePath,
+  authorizeEndpoint: centralAuth.authorizeEndpoint,
+  tokenEndpoint: centralAuth.tokenEndpoint,
 };
 
 // Create HTTP server
