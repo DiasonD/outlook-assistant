@@ -6,10 +6,25 @@ const { ensureAuthenticated } = require('../../auth');
 jest.mock('../../utils/graph-api');
 jest.mock('../../auth');
 
+/**
+ * Pull the PATCH body from a callGraphAPI invocation by name rather than
+ * positional index. Documents the expected (accessToken, method, endpoint,
+ * body) contract in one place — if the signature changes, only this helper
+ * needs updating instead of every test.
+ */
+function patchBodyOf(call) {
+  const [, method, , body] = call;
+  expect(method).toBe('PATCH');
+  return body;
+}
+
 describe('handleUpdateEvent', () => {
   beforeEach(() => {
-    callGraphAPI.mockClear();
-    ensureAuthenticated.mockClear();
+    // mockReset() (vs mockClear()) clears both call history AND mock
+    // implementations, so validation-only tests below can't accidentally
+    // pass because an earlier test left ensureAuthenticated resolved.
+    callGraphAPI.mockReset();
+    ensureAuthenticated.mockReset();
   });
 
   test('returns error when eventId is missing', async () => {
@@ -50,7 +65,7 @@ describe('handleUpdateEvent', () => {
       start: '2026-05-12T10:00:00',
     });
 
-    const body = callGraphAPI.mock.calls[0][3];
+    const body = patchBodyOf(callGraphAPI.mock.calls[0]);
     expect(body.start.dateTime).toBe('2026-05-12T10:00:00');
     expect(body.start.timeZone).toBe(DEFAULT_TIMEZONE);
     expect(body.end).toBeUndefined();
@@ -65,7 +80,7 @@ describe('handleUpdateEvent', () => {
       start: { dateTime: '2026-05-12T10:00:00', timeZone: 'Europe/London' },
     });
 
-    const body = callGraphAPI.mock.calls[0][3];
+    const body = patchBodyOf(callGraphAPI.mock.calls[0]);
     expect(body.start.timeZone).toBe('Europe/London');
   });
 
@@ -78,7 +93,7 @@ describe('handleUpdateEvent', () => {
       end: '2026-05-12T17:00:00',
     });
 
-    const body = callGraphAPI.mock.calls[0][3];
+    const body = patchBodyOf(callGraphAPI.mock.calls[0]);
     expect(body.end.dateTime).toBe('2026-05-12T17:00:00');
     expect(body.end.timeZone).toBe(DEFAULT_TIMEZONE);
     expect(body.start).toBeUndefined();
@@ -93,7 +108,7 @@ describe('handleUpdateEvent', () => {
       attendees: ['alice@example.com', 'bob@example.com'],
     });
 
-    const body = callGraphAPI.mock.calls[0][3];
+    const body = patchBodyOf(callGraphAPI.mock.calls[0]);
     expect(body.attendees).toEqual([
       { emailAddress: { address: 'alice@example.com' }, type: 'required' },
       { emailAddress: { address: 'bob@example.com' }, type: 'required' },
@@ -106,7 +121,7 @@ describe('handleUpdateEvent', () => {
 
     await handleUpdateEvent({ eventId: 'evt_1', attendees: [] });
 
-    const body = callGraphAPI.mock.calls[0][3];
+    const body = patchBodyOf(callGraphAPI.mock.calls[0]);
     expect(body.attendees).toEqual([]);
   });
 
@@ -119,7 +134,7 @@ describe('handleUpdateEvent', () => {
       body: 'New notes',
     });
 
-    const body = callGraphAPI.mock.calls[0][3];
+    const body = patchBodyOf(callGraphAPI.mock.calls[0]);
     expect(body.body).toEqual({ contentType: 'HTML', content: 'New notes' });
   });
 
@@ -132,7 +147,7 @@ describe('handleUpdateEvent', () => {
       location: '16 Apex Drive',
     });
 
-    const body = callGraphAPI.mock.calls[0][3];
+    const body = patchBodyOf(callGraphAPI.mock.calls[0]);
     expect(body.location).toEqual({ displayName: '16 Apex Drive' });
   });
 
@@ -148,7 +163,7 @@ describe('handleUpdateEvent', () => {
     });
 
     expect(callGraphAPI).toHaveBeenCalledTimes(1);
-    const body = callGraphAPI.mock.calls[0][3];
+    const body = patchBodyOf(callGraphAPI.mock.calls[0]);
     expect(body.subject).toBe('Reschedule');
     expect(body.start.dateTime).toBe('2026-05-12T10:00:00');
     expect(body.end.dateTime).toBe('2026-05-12T17:00:00');
@@ -207,7 +222,7 @@ describe('handleUpdateEvent', () => {
 
     await handleUpdateEvent({ eventId: 'evt_1', isOnlineMeeting: true });
 
-    const body = callGraphAPI.mock.calls[0][3];
+    const body = patchBodyOf(callGraphAPI.mock.calls[0]);
     expect(body.isOnlineMeeting).toBe(true);
   });
 
@@ -217,7 +232,7 @@ describe('handleUpdateEvent', () => {
 
     await handleUpdateEvent({ eventId: 'evt_1', isOnlineMeeting: 0 });
 
-    const body = callGraphAPI.mock.calls[0][3];
+    const body = patchBodyOf(callGraphAPI.mock.calls[0]);
     expect(body.isOnlineMeeting).toBe(false);
   });
 
@@ -227,7 +242,7 @@ describe('handleUpdateEvent', () => {
 
     await handleUpdateEvent({ eventId: 'evt_1', sensitivity: 'private' });
 
-    const body = callGraphAPI.mock.calls[0][3];
+    const body = patchBodyOf(callGraphAPI.mock.calls[0]);
     expect(body.sensitivity).toBe('private');
   });
 
@@ -246,7 +261,7 @@ describe('handleUpdateEvent', () => {
 
     await handleUpdateEvent({ eventId: 'evt_1', showAs: 'tentative' });
 
-    const body = callGraphAPI.mock.calls[0][3];
+    const body = patchBodyOf(callGraphAPI.mock.calls[0]);
     expect(body.showAs).toBe('tentative');
   });
 
@@ -265,7 +280,7 @@ describe('handleUpdateEvent', () => {
 
     await handleUpdateEvent({ eventId: 'evt_1', importance: 'high' });
 
-    const body = callGraphAPI.mock.calls[0][3];
+    const body = patchBodyOf(callGraphAPI.mock.calls[0]);
     expect(body.importance).toBe('high');
   });
 
@@ -287,7 +302,7 @@ describe('handleUpdateEvent', () => {
       categories: ['Personal', 'Travel'],
     });
 
-    const body = callGraphAPI.mock.calls[0][3];
+    const body = patchBodyOf(callGraphAPI.mock.calls[0]);
     expect(body.categories).toEqual(['Personal', 'Travel']);
   });
 
@@ -297,7 +312,7 @@ describe('handleUpdateEvent', () => {
 
     await handleUpdateEvent({ eventId: 'evt_1', categories: [] });
 
-    const body = callGraphAPI.mock.calls[0][3];
+    const body = patchBodyOf(callGraphAPI.mock.calls[0]);
     expect(body.categories).toEqual([]);
   });
 
@@ -310,7 +325,7 @@ describe('handleUpdateEvent', () => {
       reminderMinutesBeforeStart: 30,
     });
 
-    const body = callGraphAPI.mock.calls[0][3];
+    const body = patchBodyOf(callGraphAPI.mock.calls[0]);
     expect(body.reminderMinutesBeforeStart).toBe(30);
   });
 

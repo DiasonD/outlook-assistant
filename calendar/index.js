@@ -75,7 +75,7 @@ const calendarTools = [
   {
     name: 'manage-event',
     description:
-      'Manage an existing calendar event. action=update edits fields (subject, start, end, attendees, body, location) without rebuilding the event. action=decline declines an invitation. action=cancel cancels an event you organised. action=delete permanently removes an event.',
+      'Manage an existing calendar event. action=update edits fields (subject, start, end, attendees, body, location, isOnlineMeeting, sensitivity, showAs, importance, categories, reminderMinutesBeforeStart) without rebuilding the event; pass dryRun=true to preview the PATCH payload. action=decline declines an invitation. action=cancel cancels an event you organised. action=delete permanently removes an event.',
     annotations: {
       title: 'Manage Calendar Event',
       readOnlyHint: false,
@@ -108,18 +108,42 @@ const calendarTools = [
           description: 'New subject (action=update only)',
         },
         start: {
-          type: 'string',
-          description: 'New start time in ISO 8601 format (action=update only)',
+          oneOf: [
+            { type: 'string' },
+            {
+              type: 'object',
+              properties: {
+                dateTime: { type: 'string' },
+                timeZone: { type: 'string' },
+              },
+              required: ['dateTime'],
+              additionalProperties: false,
+            },
+          ],
+          description:
+            'New start time as ISO 8601 string or {dateTime, timeZone} object (action=update only)',
         },
         end: {
-          type: 'string',
-          description: 'New end time in ISO 8601 format (action=update only)',
+          oneOf: [
+            { type: 'string' },
+            {
+              type: 'object',
+              properties: {
+                dateTime: { type: 'string' },
+                timeZone: { type: 'string' },
+              },
+              required: ['dateTime'],
+              additionalProperties: false,
+            },
+          ],
+          description:
+            'New end time as ISO 8601 string or {dateTime, timeZone} object (action=update only)',
         },
         attendees: {
           type: 'array',
           items: { type: 'string' },
           description:
-            'Full replacement attendee list — pass complete desired list (action=update only)',
+            'Full replacement attendee list — pass complete desired list, or [] to clear (action=update only)',
         },
         body: {
           type: 'string',
