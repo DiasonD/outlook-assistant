@@ -247,7 +247,9 @@ const server = http.createServer((req, res) => {
       state,
     };
 
-    const authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${querystring.stringify(authParams)}`;
+    // Use the audience from config (defaults to "common"; configurable via
+    // OUTLOOK_AUTH_AUDIENCE for personal-only / single-tenant Azure apps).
+    const authUrl = `${AUTH_CONFIG.authorizeEndpoint}?${querystring.stringify(authParams)}`;
     console.log(`Redirecting to: ${authUrl}`);
 
     // Redirect to Microsoft's login page
@@ -296,9 +298,11 @@ function exchangeCodeForTokens(code) {
       scope: AUTH_CONFIG.scopes.join(' '),
     });
 
+    // Same audience-driven path as the authorize URL above.
+    const tokenUrl = new URL(AUTH_CONFIG.tokenEndpoint);
     const options = {
-      hostname: 'login.microsoftonline.com',
-      path: '/common/oauth2/v2.0/token',
+      hostname: tokenUrl.hostname,
+      path: tokenUrl.pathname,
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',

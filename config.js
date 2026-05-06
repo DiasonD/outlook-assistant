@@ -23,6 +23,25 @@ if (!homeDir) {
   );
 }
 
+/**
+ * Resolve the OAuth audience segment used in Microsoft Graph endpoints.
+ *
+ * Microsoft's identity platform v2.0 routes by audience:
+ *   - `common`         — personal AND work/school accounts (multi-tenant + personal)
+ *   - `consumers`      — personal Microsoft accounts only
+ *   - `organizations`  — work/school accounts only
+ *   - `<tenant-guid>`  — single-tenant
+ *
+ * The right value depends on the Azure app registration's "Supported account
+ * types" setting. An app registered as "Personal Microsoft accounts only" is
+ * rejected by `/common/` with `AADSTS9002331` and must use `/consumers/`;
+ * a single-tenant app must use its tenant GUID; etc.
+ *
+ * Defaulting to `common` preserves existing behaviour. Set
+ * `OUTLOOK_AUTH_AUDIENCE` to override.
+ */
+const AUTH_AUDIENCE = process.env.OUTLOOK_AUTH_AUDIENCE || 'common';
+
 module.exports = {
   // Server information
   SERVER_NAME: 'outlook-assistant',
@@ -54,9 +73,10 @@ module.exports = {
     ],
     tokenStorePath: path.join(homeDir, '.outlook-assistant-tokens.json'),
     authServerUrl: 'http://localhost:3333',
-    deviceCodeEndpoint:
-      'https://login.microsoftonline.com/common/oauth2/v2.0/devicecode',
-    tokenEndpoint: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+    audience: AUTH_AUDIENCE,
+    deviceCodeEndpoint: `https://login.microsoftonline.com/${AUTH_AUDIENCE}/oauth2/v2.0/devicecode`,
+    tokenEndpoint: `https://login.microsoftonline.com/${AUTH_AUDIENCE}/oauth2/v2.0/token`,
+    authorizeEndpoint: `https://login.microsoftonline.com/${AUTH_AUDIENCE}/oauth2/v2.0/authorize`,
     defaultAuthMethod: process.env.OUTLOOK_AUTH_METHOD || 'device-code',
   },
 
