@@ -6,6 +6,7 @@ const handleDeclineEvent = require('./decline');
 const handleCreateEvent = require('./create');
 const handleCancelEvent = require('./cancel');
 const handleDeleteEvent = require('./delete');
+const handleUpdateEvent = require('./update');
 
 // Calendar tool definitions (consolidated: 5 → 3)
 const calendarTools = [
@@ -74,7 +75,7 @@ const calendarTools = [
   {
     name: 'manage-event',
     description:
-      'Manage an existing calendar event. action=decline declines an invitation. action=cancel cancels an event you organised. action=delete permanently removes an event.',
+      'Manage an existing calendar event. action=update edits fields (subject, start, end, attendees, body, location) without rebuilding the event. action=decline declines an invitation. action=cancel cancels an event you organised. action=delete permanently removes an event.',
     annotations: {
       title: 'Manage Calendar Event',
       readOnlyHint: false,
@@ -86,7 +87,7 @@ const calendarTools = [
       properties: {
         action: {
           type: 'string',
-          enum: ['decline', 'cancel', 'delete'],
+          enum: ['update', 'decline', 'cancel', 'delete'],
           description: 'Action to perform (required)',
         },
         eventId: {
@@ -101,6 +102,32 @@ const calendarTools = [
         comment: {
           type: 'string',
           description: 'Optional comment for declining or cancelling the event',
+        },
+        subject: {
+          type: 'string',
+          description: 'New subject (action=update only)',
+        },
+        start: {
+          type: 'string',
+          description: 'New start time in ISO 8601 format (action=update only)',
+        },
+        end: {
+          type: 'string',
+          description: 'New end time in ISO 8601 format (action=update only)',
+        },
+        attendees: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'Full replacement attendee list — pass complete desired list (action=update only)',
+        },
+        body: {
+          type: 'string',
+          description: 'New body content (action=update only)',
+        },
+        location: {
+          type: 'string',
+          description: 'New location display name (action=update only)',
         },
       },
       additionalProperties: false,
@@ -126,6 +153,8 @@ const calendarTools = [
       }
       args = normalised;
       switch (args.action) {
+        case 'update':
+          return handleUpdateEvent(args);
         case 'decline':
           return handleDeclineEvent(args);
         case 'cancel':
@@ -137,7 +166,7 @@ const calendarTools = [
             content: [
               {
                 type: 'text',
-                text: "Invalid action. Use 'decline', 'cancel', or 'delete'.",
+                text: "Invalid action. Use 'update', 'decline', 'cancel', or 'delete'.",
               },
             ],
           };
@@ -153,4 +182,5 @@ module.exports = {
   handleCreateEvent,
   handleCancelEvent,
   handleDeleteEvent,
+  handleUpdateEvent,
 };
