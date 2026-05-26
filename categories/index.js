@@ -826,7 +826,7 @@ const categoriesTools = [
   {
     name: 'manage-category',
     description:
-      'Manage master categories. action=list (default) lists categories. action=create creates a category. action=update changes name/color. action=delete removes a category.',
+      "Manage the user's master category list (the colour-coded labels available across mail/calendar/contacts). action=`list` (default) returns categories with id/displayName/color. action=`create` adds a new category — `displayName` required, `color` optional (preset0-preset24, e.g. preset0=Red, preset7=Blue). action=`update` (alias `set` — deprecated) changes name/colour by `id`. action=`delete` removes a category — this does NOT untag messages already labelled with it; existing messages retain the orphaned label until manually cleaned. Use `apply-category` to tag/untag specific messages.",
     annotations: {
       title: 'Master Categories',
       readOnlyHint: false,
@@ -899,7 +899,8 @@ const categoriesTools = [
   },
   {
     name: 'apply-category',
-    description: 'Apply, add, or remove categories on email message(s)',
+    description:
+      "Tag or untag email messages with master categories (those created via `manage-category`). action=`set` (default) replaces the message's category set with the supplied `categories` array. action=`add` appends categories to whatever's already on the message. action=`remove` removes only the named categories, leaving the rest. Accepts either `messageId` (single) or `messageIds` (batch via Graph `$batch`). `categories` are matched by display name — names must already exist in the master list (create via `manage-category` first). Returns per-message confirmation.",
     annotations: {
       title: 'Apply Categories',
       readOnlyHint: false,
@@ -938,7 +939,7 @@ const categoriesTools = [
   {
     name: 'manage-focused-inbox',
     description:
-      'Manage Focused Inbox overrides. action=list (default) shows overrides. action=set creates/updates an override. action=delete removes an override.',
+      'Manage Focused Inbox sender overrides — explicit rules that force messages from a given sender into Focused or Other regardless of the ML classifier. action=`list` (default) returns existing overrides with id/sender/classifyAs. action=`set` creates or updates an override for `emailAddress` (optional `name`), routing future mail to `focused` (default) or `other`. action=`delete` removes the override for `emailAddress`. Note: this only works on accounts that have Focused Inbox enabled — personal Outlook.com accounts without it return an empty list.',
     annotations: {
       title: 'Focused Inbox',
       readOnlyHint: false,

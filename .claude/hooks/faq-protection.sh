@@ -1,12 +1,13 @@
 #!/bin/bash
 # faq-protection.sh
 # Hook: PreToolUse (Bash, Write, Edit)
-# Purpose: Protect docs/faq/index.md from accidental deletion or
+# Purpose: Protect docs/faq/faq.md from accidental deletion or
 #          truncation. The file is the upstream content source for
 #          the marketing-site help-centre FAQPage JSON-LD pipeline
 #          (littlebearapps/littlebearapps.com#142, this repo's #167).
 #          Removing it breaks the site sync at build time. The file
 #          should be UPDATED as features ship, not deleted.
+#          (Renamed from index.md → faq.md in v3.8.1, issue #191.)
 #
 # Behaviour:
 #   - Bash: blocks `rm`, `mv`, `git rm`, `git mv` targeting the FAQ
@@ -28,7 +29,7 @@ set -euo pipefail
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
 
-FAQ_PATH="docs/faq/index.md"
+FAQ_PATH="docs/faq/faq.md"
 FAQ_DIR="docs/faq"
 MIN_QUESTIONS=7
 
@@ -53,7 +54,7 @@ case "$TOOL_NAME" in
     # Anchor destructive verbs at a real shell command boundary:
     # start-of-string, newline, semicolon, pipe, ampersand, or open-paren.
     BOUNDARY='(^|[;|&(]|^|\n)[[:space:]]*'
-    FAQ_REF='(docs/faq/index\.md|docs/faq(/|[[:space:]]|$))'
+    FAQ_REF='(docs/faq/faq\.md|docs/faq(/|[[:space:]]|$))'
 
     if echo "$STRIPPED" | grep -qE "${BOUNDARY}rm([[:space:]]+-[a-zA-Z]+)*[[:space:]]+([^|;&]*[[:space:]])?${FAQ_REF}"; then
       block "BLOCKED: $FAQ_PATH (or $FAQ_DIR/) cannot be deleted via Bash. This file is the upstream content source for the marketing-site help-centre FAQPage JSON-LD pipeline (#167). Removing it breaks the site sync at build time. UPDATE the file instead — see .claude/rules/faq-maintenance.md for the policy and update cadence."

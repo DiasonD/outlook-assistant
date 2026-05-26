@@ -679,11 +679,11 @@ const contactsTools = [
   {
     name: 'manage-contact',
     description:
-      'Manage personal contacts. action=list (default) lists contacts. action=search searches by name/email. action=get retrieves full details. action=create adds a contact. action=update modifies a contact. action=delete removes a contact.',
+      "Full CRUD over the signed-in user's personal Outlook contacts (destructive: covers `delete` action). action=`list` (default) returns contacts with pagination via `skip`/`count` (default 50). action=`search` returns contacts matching `query` against name/email (default 25). action=`get` returns full contact detail by `id`. action=`create` adds a new contact and returns its `id`. action=`update` patches the given fields by `id` (only fields passed are changed). action=`delete` permanently removes the contact by `id`. Use `outputVerbosity` (minimal/standard/full) on list/search to control field count. Prefer `search-people` for cross-source relevance ranking (contacts + directory + recent comms) — this tool only searches your personal contact store.",
     annotations: {
       title: 'Contacts',
       readOnlyHint: false,
-      destructiveHint: false,
+      destructiveHint: true,
       openWorldHint: false,
     },
     inputSchema: {
@@ -801,7 +801,7 @@ const contactsTools = [
   {
     name: 'search-people',
     description:
-      'Search for people by relevance (includes contacts, directory, and recent communications). Uses a different API from manage-contact search.',
+      'Relevance-ranked search across personal contacts, organisation directory, and recent communications via the Microsoft Graph People API (read-only). Returns people objects with `displayName`, `emailAddresses`, `companyName`, `jobTitle`, and relevance metadata — ideal for "who is X?" or "who do I email about Y?" lookups. Use `manage-contact` action=`search` instead when you specifically need entries from your personal contact store only.',
     annotations: {
       title: 'People Search',
       readOnlyHint: true,

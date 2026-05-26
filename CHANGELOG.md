@@ -7,7 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [3.8.0] - 2026-05
+## [3.8.1] - 2026-05
+
+Patch release driven by a glama.ai / safemcp.info scoring audit. Lifts the
+glama "Tool Definition Quality" dimension from B (avg 3.8/5 across 22 tools)
+toward A by rewriting every tool description with usage guidance, return-value
+shape, and side-effect notes. Also fixes two annotation correctness issues
+surfaced by the audit, tightens `.gitignore`, and renames the FAQ source file
+for a cleaner public URL.
+
+### Fixed
+
+- **`manage-contact` destructive-hint correctness** — flipped tool-level
+  `destructiveHint` from `false` to `true` so MCP clients prompt for
+  confirmation. The tool exposes a `delete` action; the previous annotation
+  was misleading. Flagged by the glama.ai 2026-05-26 tool-definition audit
+  ("destructive hint contradiction").
+- **`folders` description clarity** — kept the conservative tool-level
+  `destructiveHint: true` (covers the `delete` sub-action) but rewrote the
+  description to explicitly call out that `list` and `stats` sub-actions are
+  read-only despite the annotation. Closes the gap glama flagged as
+  "missing mode-specific details".
+
+### Changed
+
+- **Tool descriptions — all 22 tools** — rewrote the top-level `description`
+  field on every tool in `auth/`, `calendar/`, `categories/`, `contacts/`,
+  `email/`, `folder/`, `rules/`, `settings/`, and `advanced/` to follow a
+  `purpose → when-to-use → returns → side-effects/pagination/errors`
+  template, lifting the glama.ai per-tool average from 3.8/5 toward 4.4+/5.
+  Source prose lifted from `docs/quickrefs/tools-reference.md` (the
+  single-source-of-truth quick reference) — no behavioural changes, no
+  schema changes, no input/output changes. Pure metadata.
+- **`docs/faq/index.md` → `docs/faq/faq.md`** — renamed the FAQ source file
+  for a cleaner public URL on the marketing-site help centre
+  (`/help/outlook-assistant/faq/` instead of `/help/outlook-assistant/index/`).
+  Internal references updated in `CLAUDE.md`, `llms.txt`,
+  `.claude/rules/faq-maintenance.md`, and `.claude/hooks/faq-protection.sh`.
+  The marketing-site sync (`littlebearapps/littlebearapps.com:
+  scripts/docs-sync.config.ts`) picks up the new filename on next build.
+  No content changes — same frontmatter, same 11 Q&A pairs. (#191)
+- **`.gitignore`** — added `._*` (macOS resource-fork metadata) and `*.mov`
+  (screen recordings often left in repo root from QA captures) so they no
+  longer clutter `git status`.
+
+
 
 Minor release. Closes roadmap item **#124** (`manage-event update` action) and adds two
 config-layer overrides surfaced by an external contributor running the server against a

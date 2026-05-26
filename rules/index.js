@@ -180,7 +180,7 @@ const rulesTools = [
   {
     name: 'manage-rules',
     description:
-      'Manage inbox rules. action=list (default) lists rules. action=create creates a new rule with conditions, actions, and optional exceptions. action=update modifies an existing rule. action=reorder changes rule execution priority. action=delete removes a rule.',
+      'Server-side inbox rule CRUD (destructive: covers `delete`; supports `dryRun` on create/update for preview). Rules run on the Exchange server regardless of which client is open. action=`list` (default) returns rules with id/name/sequence — pass `includeDetails: true` to expand conditions/actions/exceptions. action=`create` builds a new rule from condition params (12 supported: fromAddresses, containsSubject, bodyContains, hasAttachments, importance, sentTo, sensitivity, etc.), action params (9 supported: moveToFolder, forwardTo, redirectTo, assignCategories, markAsRead, delete, etc.), and optional `except*` exceptions. action=`update` patches the named fields by `ruleId`. action=`reorder` changes execution priority via `sequence` (lower = earlier). action=`delete` removes a rule. Recipient allowlist applies to forwardTo/redirectTo. `permanentDelete` action is intentionally omitted (too dangerous for AI use — use the Outlook UI). Subject to session rate limits (`OUTLOOK_MAX_MANAGE_RULES_PER_SESSION`).',
     annotations: {
       title: 'Inbox Rules',
       readOnlyHint: false,

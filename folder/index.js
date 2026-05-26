@@ -12,7 +12,7 @@ const folderTools = [
   {
     name: 'folders',
     description:
-      'Manage mail folders. action=list (default) lists folders. action=create creates a folder. action=move moves emails between folders. action=stats gets folder counts for pagination planning. action=delete removes a folder.',
+      'Manage mail folders (tool-level destructiveHint=true because `delete` permanently removes a folder; `list` and `stats` are read-only sub-actions despite the annotation). action=`list` (default) returns the folder tree with id/displayName/parentFolderId (toggle `includeItemCounts` for unread/total, `includeChildren` for hierarchy). action=`create` makes a new folder under the inbox (or under `folder`/`folderId`/`folderName`) and returns its id. action=`move` relocates emails (`emailIds` array) into `targetFolder`. action=`stats` returns counts (totalItemCount/unreadItemCount) suitable for pagination planning — pair with `outputVerbosity` to limit noise. action=`delete` permanently removes a folder and its contents — there is no recycle-bin recovery.',
     annotations: {
       title: 'Mail Folders',
       readOnlyHint: false,

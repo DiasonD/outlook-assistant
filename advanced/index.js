@@ -606,7 +606,8 @@ async function handleFindMeetingRooms(args) {
 const advancedTools = [
   {
     name: 'access-shared-mailbox',
-    description: 'Read emails from a shared mailbox you have access to',
+    description:
+      'List emails from a shared mailbox the signed-in user has been granted access to (read-only). Returns paged messages from the named `sharedMailbox` (or alias `email`) and `folder` (default `inbox`) with id/subject/from/receivedDateTime/preview — same shape as `search-emails` list mode. Requires that the shared mailbox has been delegated to the signed-in user in Exchange (admin-configured). Use `outputVerbosity` to control field count and `count` (default 25, max 50) for page size. For full search/filter capability over a shared mailbox, prefer `search-emails` with a folder path scoped to the shared mailbox.',
     annotations: {
       title: 'Shared Mailbox',
       readOnlyHint: true,
@@ -645,7 +646,8 @@ const advancedTools = [
   },
   {
     name: 'find-meeting-rooms',
-    description: 'Search for meeting rooms in your organisation',
+    description:
+      "Discover bookable meeting rooms in the user's organisation via the Graph rooms endpoint (read-only). Returns room resources with displayName, emailAddress, building, floor, capacity, and bookingType — suitable for piping into `create-event` as attendees. Filter by `query` (matches name/email), `building`, `floor`, or minimum `capacity`. Returns empty list on personal accounts (the rooms endpoint is M365-only). Use `outputVerbosity` to control field count.",
     annotations: {
       title: 'Meeting Rooms',
       readOnlyHint: true,

@@ -12,7 +12,8 @@ const handleUpdateEvent = require('./update');
 const calendarTools = [
   {
     name: 'list-events',
-    description: 'Lists upcoming events from your calendar',
+    description:
+      'List upcoming calendar events for the signed-in user (read-only). Returns an array of events with id, subject, start/end, attendees, location, organiser, and webLink. Use `count` (default 10, max 50) to control page size; this tool does not filter — use the Outlook UI or specific date ranges via Graph for filtered queries. Times are returned in the configured timezone (default Australia/Melbourne; override with `OUTLOOK_DEFAULT_TIMEZONE`).',
     annotations: {
       title: 'List Calendar Events',
       readOnlyHint: true,
@@ -33,7 +34,8 @@ const calendarTools = [
   },
   {
     name: 'create-event',
-    description: 'Creates a new calendar event',
+    description:
+      "Create a new calendar event on the signed-in user's default calendar. Returns the created event with its `id`, `webLink`, and (if attendees are present) an auto-generated online-meeting URL — attendees receive invitations on save. Times use the configured timezone (default Australia/Melbourne; override with `OUTLOOK_DEFAULT_TIMEZONE`); omit the `Z` suffix to send local time. Use `manage-event` action=`update` to modify an event after creation, or `manage-event` action=`cancel`/`delete` to remove it.",
     annotations: {
       title: 'Create Calendar Event',
       readOnlyHint: false,
@@ -75,7 +77,7 @@ const calendarTools = [
   {
     name: 'manage-event',
     description:
-      'Manage an existing calendar event. action=update edits fields (subject, start, end, attendees, body, location, isOnlineMeeting, sensitivity, showAs, importance, categories, reminderMinutesBeforeStart) without rebuilding the event; pass dryRun=true to preview the PATCH payload. action=decline declines an invitation. action=cancel cancels an event you organised. action=delete permanently removes an event.',
+      "Manage an existing calendar event (destructive: covers update/decline/cancel/delete — use dryRun where supported to preview). action=`update` edits fields in place via PATCH (subject, start, end, attendees, body, location, isOnlineMeeting, sensitivity, showAs, importance, categories, reminderMinutesBeforeStart) — only fields you pass are changed; pass `dryRun: true` to preview the PATCH payload. action=`decline` declines an invitation (optional `comment`). action=`cancel` cancels an event you organised and notifies attendees. action=`delete` permanently removes the event. Returns the updated event on update; status confirmation otherwise. Note: there is no `accept` action — accept invitations in the Outlook UI (Graph's accept verb is unreliable across personal/M365).",
     annotations: {
       title: 'Manage Calendar Event',
       readOnlyHint: false,

@@ -615,7 +615,7 @@ const settingsTools = [
   {
     name: 'mailbox-settings',
     description:
-      'Manage mailbox settings. action=get (default) retrieves settings (language, timezone, working hours, auto-replies). action=set-auto-replies configures out-of-office. action=set-working-hours configures work schedule.',
+      'Read or update mailbox-level settings (idempotent — safe to retry; sets are PATCH-style and merge with existing state). action=`get` (default) returns settings — use `section` to filter (`language`, `timeZone`, `workingHours`, `automaticRepliesSetting`, or `all`). action=`set-auto-replies` configures out-of-office: `enabled` true/false, optional `startDateTime`/`endDateTime` (ISO 8601) for scheduled mode, `internalReplyMessage` and (optionally) `externalReplyMessage`. action=`set-working-hours` updates the schedule: `startTime`/`endTime` (HH:MM) and `daysOfWeek` (array of `monday`..`sunday`). Returns the updated settings object on set actions.',
     annotations: {
       title: 'Mailbox Settings',
       readOnlyHint: false,

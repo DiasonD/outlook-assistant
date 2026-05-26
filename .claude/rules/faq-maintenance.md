@@ -1,6 +1,6 @@
 # FAQ Maintenance Policy
 
-`docs/faq/index.md` is the upstream content source for the marketing-site help-centre FAQPage JSON-LD pipeline. The marketing site (`littlebearapps/littlebearapps.com`) syncs from this file via `scripts/docs-sync.config.ts` and emits `<script type="application/ld+json">` `FAQPage` blocks on the rendered page. Removing or truncating the file breaks the site build.
+`docs/faq/faq.md` is the upstream content source for the marketing-site help-centre FAQPage JSON-LD pipeline. The marketing site (`littlebearapps/littlebearapps.com`) syncs from this file via `scripts/docs-sync.config.ts` and emits `<script type="application/ld+json">` `FAQPage` blocks on the rendered page. Removing or truncating the file breaks the site build.
 
 The file is enforced by `.claude/hooks/faq-protection.sh` which blocks deletion via Bash and rejects Writes that drop below the minimum question count. **Update — never delete.**
 
@@ -8,12 +8,12 @@ The file is enforced by `.claude/hooks/faq-protection.sh` which blocks deletion 
 
 | Operation | Protection |
 |-----------|------------|
-| `rm docs/faq/index.md` (any flags) | **Blocked** at PreToolUse (Bash) |
+| `rm docs/faq/faq.md` (any flags) | **Blocked** at PreToolUse (Bash) |
 | `rm -rf docs/faq/` | **Blocked** at PreToolUse (Bash) |
 | `mv docs/faq/...` to anywhere | **Blocked** at PreToolUse (Bash) |
 | `git rm` / `git mv` of the file or directory | **Blocked** at PreToolUse (Bash) |
-| `Write docs/faq/index.md` with fewer than 7 `## ` headings | **Blocked** at PreToolUse (Write) |
-| `Edit docs/faq/index.md` | Pass-through — use Edit for revisions |
+| `Write docs/faq/faq.md` with fewer than 7 `## ` headings | **Blocked** at PreToolUse (Write) |
+| `Edit docs/faq/faq.md` | Pass-through — use Edit for revisions |
 
 ## When to update the FAQ
 
@@ -43,7 +43,7 @@ If you legitimately need to rewrite the whole file (e.g. major restructure), pre
 
 ## How to legitimately move or delete
 
-If a future restructure genuinely requires moving or removing `docs/faq/index.md`:
+If a future restructure genuinely requires moving or removing `docs/faq/faq.md`:
 
 1. Land the matching change in `littlebearapps/littlebearapps.com:scripts/docs-sync.config.ts` **first** (or simultaneously) so the site sync doesn't hard-fail.
 2. Coordinate the deploy windows so neither side ships in isolation.

@@ -30,7 +30,11 @@ yarn.lock
 
 # OS specific files
 .DS_Store
+._*
 Thumbs.db
+
+# Screen recordings (often left in repo root from QA captures)
+*.mov
 
 # Logs
 logs
