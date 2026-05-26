@@ -1,7 +1,8 @@
 # Publish to npm and MCP Registry
 #
 # Publishes the package to npm and the Official MCP Registry when a version
-# tag is pushed. Uses NPM_TOKEN for npm auth and GitHub OIDC for MCP Registry.
+# tag is pushed. Uses npm Trusted Publishing (OIDC) for npm auth and GitHub
+# OIDC for MCP Registry — no stored secrets required.
 #
 # Triggers:
 # 1. Tag push (manual): git push origin v3.4.1
@@ -10,16 +11,21 @@
 #    so auto-tag can chain into publish without needing a PAT.
 #
 # Prerequisites:
-# 1. Set NPM_TOKEN as a GitHub Actions secret (granular access token from npmjs.com)
+# 1. npm Trusted Publisher configured at
+#    https://www.npmjs.com/package/@littlebearapps/outlook-assistant/access
+#    (Settings → Trusted Publisher → GitHub Actions:
+#     org=littlebearapps, repo=outlook-assistant, workflow=publish.yml,
+#     allowed actions: publish)
 # 2. server.json with mcpName matching io.github.littlebearapps/outlook-assistant
+# 3. Node >= 22.14.0 and npm >= 11.5.1 (required for OIDC trusted publishing)
+#
+# npm auth: OIDC short-lived token. Bypasses the package's 2FA-required
+# policy by design — the OIDC token is its own auth mechanism, not a
+# token+OTP combo. Provenance attestation is automatic.
 #
 # MCP Registry auth: Uses GitHub Actions OIDC (no secrets needed).
 # The mcp-publisher CLI exchanges the workflow's OIDC token for a registry JWT.
 # Server name must match the publishing repo's GitHub owner (littlebearapps).
-#
-# Future: migrate npm to OIDC trusted publishing when npmjs.com trusted publisher
-# is configured (org=littlebearapps, repo=outlook-assistant, workflow=publish.yml)
-# and Node 24+ (npm 11.5.1+) is used.
 #
 # Note: This workflow uses no untrusted input in run commands.
 
@@ -47,7 +53,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version: 20.x
+          # npm Trusted Publishing requires Node >= 22.14.0 / npm >= 11.5.1.
+          node-version: '22'
           cache: 'npm'
           registry-url: 'https://registry.npmjs.org'
 
@@ -66,9 +73,11 @@ jobs:
       - name: Publish to npm
         id: npm-publish
         continue-on-error: true
-        run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # Under Trusted Publishing the short-lived OIDC token is minted from
+        # `permissions: id-token: write` on this job — no NODE_AUTH_TOKEN
+        # needed. `--provenance` is implied; passing it explicitly is fine
+        # but redundant.
+        run: npm publish --access public
 
       - name: Verify npm publication
         run: |
