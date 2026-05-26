@@ -39,7 +39,8 @@ const { AUTH_CONFIG: centralAuth } = require('./config');
 // Log to console
 console.log('Starting Outlook Authentication Server');
 
-// Authentication configuration — scopes and tokenStorePath from config.js (single source of truth)
+// Authentication configuration — scopes, tokenStorePath, and audience-driven
+// endpoints sourced from config.js (single source of truth).
 const AUTH_CONFIG = {
   clientId: process.env.OUTLOOK_CLIENT_ID || process.env.MS_CLIENT_ID || '',
   clientSecret:
@@ -47,6 +48,8 @@ const AUTH_CONFIG = {
   redirectUri: centralAuth.redirectUri,
   scopes: centralAuth.scopes,
   tokenStorePath: centralAuth.tokenStorePath,
+  authorizeEndpoint: centralAuth.authorizeEndpoint,
+  tokenEndpoint: centralAuth.tokenEndpoint,
 };
 
 // Create HTTP server
@@ -247,7 +250,9 @@ const server = http.createServer((req, res) => {
       state,
     };
 
-    const authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${querystring.stringify(authParams)}`;
+    // Use the audience from config (defaults to "common"; configurable via
+    // OUTLOOK_AUTH_AUDIENCE for personal-only / single-tenant Azure apps).
+    const authUrl = `${AUTH_CONFIG.authorizeEndpoint}?${querystring.stringify(authParams)}`;
     console.log(`Redirecting to: ${authUrl}`);
 
     // Redirect to Microsoft's login page
@@ -296,9 +301,13 @@ function exchangeCodeForTokens(code) {
       scope: AUTH_CONFIG.scopes.join(' '),
     });
 
+    // Same audience-driven path as the authorize URL above.
+    const tokenUrl = new URL(AUTH_CONFIG.tokenEndpoint);
     const options = {
-      hostname: 'login.microsoftonline.com',
-      path: '/common/oauth2/v2.0/token',
+      hostname: tokenUrl.hostname,
+      // Preserve any query string on the endpoint (none today, but future-safe
+      // if Microsoft ever adds hint params to the token URL).
+      path: tokenUrl.pathname + tokenUrl.search,
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
