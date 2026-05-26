@@ -63,7 +63,7 @@ Outlook Assistant connects AI assistants to your Microsoft Outlook account throu
 | Module | Tools | What You Can Do |
 |--------|------:|-----------------|
 | **Email** | 8 | `search-emails` (list/search/delta/conversations), `read-email` (content + forensic headers), `send-email` (with dry-run + mail tips), `draft` (create/update/send/delete/reply/forward), `update-email` (read status, flags), `attachments`, `export`, `get-mail-tips` |
-| **Calendar** | 3 | `list-events`, `create-event`, `manage-event` (decline/cancel/delete) |
+| **Calendar** | 3 | `list-events`, `create-event`, `manage-event` (update/decline/cancel/delete) |
 | **Contacts** | 2 | `manage-contact` (list/search/get/create/update/delete), `search-people` |
 | **Categories** | 3 | `manage-category` (CRUD), `apply-category`, `manage-focused-inbox` |
 | **Settings** | 1 | `mailbox-settings` (get/set auto-replies/set working hours) |
@@ -335,6 +335,15 @@ USE_TEST_MODE=false
 ```
 
 > **Note:** The server also accepts `MS_CLIENT_ID` and `MS_CLIENT_SECRET` for backwards compatibility.
+
+**Optional overrides** (v3.8.0+) — see [`.env.example`](.env.example) for the full list with commented worked examples:
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `OUTLOOK_AUTH_AUDIENCE` | OAuth audience: `common`, `consumers` (personal-only Azure apps), `organizations`, or single-tenant GUID. Fixes `AADSTS9002331` for personal-only app registrations. | `common` |
+| `OUTLOOK_DEFAULT_TIMEZONE` | IANA timezone applied to calendar events when callers don't pass one (e.g. `Europe/London`, `America/New_York`). | `Australia/Melbourne` |
+| `OUTLOOK_MAX_EMAILS_PER_SESSION` | Cap on `send-email` + `draft send` per MCP server lifetime. | unlimited |
+| `OUTLOOK_ALLOWED_RECIPIENTS` | Comma-separated allowlist of domains/addresses for sends, drafts, and rule forwards. | unrestricted |
 
 ### MCP Client Configuration
 

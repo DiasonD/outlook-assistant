@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.8.0] - 2026-05
+
+Minor release. Closes roadmap item **#124** (`manage-event update` action) and adds two
+config-layer overrides surfaced by an external contributor running the server against a
+personal-only Azure app in the UK.
+
+### Added
+
+- **`manage-event` `update` action** — modify existing calendar events in place via
+  `PATCH /me/events/{id}` without delete-and-recreate. Partial-update semantics: only
+  the fields you pass are changed. Covers `subject`, `start`, `end`, `attendees`,
+  `body`, `location`, `isOnlineMeeting`, `sensitivity`, `showAs`, `importance`,
+  `categories`, `reminderMinutesBeforeStart`. `dryRun` parameter supported. Closes the
+  competitive gap against ms-365-mcp-server, ryaker/outlook-mcp, Aanerud/MCP-Microsoft-Office,
+  and lokka. (#124, #173 — community contribution by @taranasus)
+- **`OUTLOOK_AUTH_AUDIENCE` env var** — configurable Microsoft Identity Platform OAuth
+  audience. Defaults to `common` (current behaviour). Accepts `common`, `consumers`,
+  `organizations`, or a single-tenant GUID. Fixes `AADSTS9002331` for Azure apps
+  registered as "Personal Microsoft accounts only" (need `consumers`) and unblocks
+  single-tenant setups. (#174 — community contribution by @taranasus)
+- **`OUTLOOK_DEFAULT_TIMEZONE` env var** — override the hardcoded `Australia/Melbourne`
+  default applied to calendar events when callers don't supply a timezone. Accepts any
+  IANA timezone identifier. (#175 — community contribution by @taranasus)
+
+### Documentation
+
+- **README demo media** — use absolute GitHub URLs for the demo GIF/MP4 so they render
+  correctly on the npm package page. (#171)
+- **Troubleshooting** — new entry for `AADSTS9002331` ("configured for personal accounts
+  only") pointing at `OUTLOOK_AUTH_AUDIENCE=consumers`.
+- **Calendar how-to** — `manage-event-responses.md` gains an "Update an Event" section
+  covering the new `update` action.
+
+### Contributors
+
+Second batch of community PRs from **@taranasus** (#173, #174, #175). Thanks!
+
 ## [3.7.4] - 2026-05
 
 Patch release closing two regressions surfaced by an independent
