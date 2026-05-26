@@ -14,15 +14,14 @@ Carry-over polish, docs, and small enhancements deferred from earlier patch slot
 - **#69** Improve error message when client secret is wrong (good first issue)
 - **#68** Add `--version` CLI flag (good first issue)
 
-## v3.8.0 — Task Integration & Auth
+## v3.8.x — Task Integration & Auth (carry-over)
 
-Next minor version. Adds Microsoft To Do as a 23rd tool, calendar feature parity, and authentication options that remove the 90-day re-auth cliff.
+v3.8.0 shipped the `manage-event update` action (#124) and two community-contributed config overrides — see "Recently shipped" below. The items in this section are the rest of the original v3.8.0 slate, carrying forward into v3.8.1 (or renumbered if scope shifts).
 
 ### Highlights
 
 - **#89** `manage-tasks` tool for Microsoft To Do — list, create, update, complete tasks (10th tool module)
 - **#123** Client credentials (app-only) authentication — eliminates the 90-day re-auth cliff for headless deployments
-- **#124** `manage-event update` action — modify existing calendar events without delete + recreate
 - **#125** Recurring calendar events — `create-event` recurrence rules
 
 ### Search & people
@@ -55,6 +54,7 @@ Larger surface-area additions and platform hardening. Roughly Q3 2026.
 
 ## Recently shipped
 
+- **v3.8.0** (May 2026) — `manage-event update` action closing the modify-event competitive gap (#124, community PR #173 by @taranasus); `OUTLOOK_AUTH_AUDIENCE` env var fixing `AADSTS9002331` for personal-only Azure apps (community PR #174); `OUTLOOK_DEFAULT_TIMEZONE` env var overriding the hardcoded `Australia/Melbourne` default (community PR #175); README demo media now uses absolute URLs so it renders on npm (#171).
 - **v3.7.4** (May 2026) — F-24 chokepoint catches JSON-stringified arrays from MCP transport (#168); `search-emails kqlQuery` no longer silently drops on Step 0 fall-through (V37-F-1 part of #169); F-17 `maxResults` alias completion in list mode.
 - **v3.7.3** (May 2026) — E2E sweep fix-up. MCP boundary param coercion + validation, strict unknown-param rejection, param-name aliases across tools, file-output `outputDir` honoured, ID surfacing on creates, identity surface in `auth about`, safety-belt warnings.
 - **v3.7.2** (Apr 2026) — Restart-safe device code auth: state persists to `~/.outlook-assistant-pending-auth.json` (mode 0o600); token refresh handles public clients correctly. (#143)

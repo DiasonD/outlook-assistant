@@ -1,6 +1,6 @@
 # CLAUDE.md - Outlook Assistant
 
-MCP server for Microsoft Outlook via Graph API (v3.7.4). 22 tools across 9 modules.
+MCP server for Microsoft Outlook via Graph API (v3.8.0). 22 tools across 9 modules.
 
 ## Commands
 
@@ -43,7 +43,7 @@ Module layout, file organisation, and the v1→v3 tool-consolidation map live in
 - **send-email**: `dryRun` param, `checkRecipients` param (mail tips), session rate limiting (`OUTLOOK_MAX_EMAILS_PER_SESSION`), recipient allowlist (`OUTLOOK_ALLOWED_RECIPIENTS`)
 - **draft**: `dryRun` on create, `checkRecipients` (mail tips), recipient allowlist, rate limiting. Send action shares limit with `send-email`.
 - **manage-rules**: `dryRun` on create/update, rate limiting (`OUTLOOK_MAX_MANAGE_RULES_PER_SESSION`), recipient allowlist on forwardTo/redirectTo, no `permanentDelete` (too dangerous for AI). Supports 12 conditions, 9 actions, and exceptions.
-- **manage-event**: marked `destructiveHint: true` (decline/cancel/delete). `accept` is deliberately omitted — Microsoft Graph doesn't expose an `accept` verb in a way that works across personal/M365 reliably; use the Outlook UI to accept invitations.
+- **manage-event**: marked `destructiveHint: true` (covers `decline`/`cancel`/`delete`; `update` action added v3.8.0 is non-destructive in isolation but inherits the tool-level annotation — use `dryRun: true` to preview update payloads). `accept` is deliberately omitted — Microsoft Graph doesn't expose an `accept` verb in a way that works across personal/M365 reliably; use the Outlook UI to accept invitations.
 - 7 read-only tools auto-approved by Claude Code; 2 destructive tools prompt for confirmation
 
 ## Key Files
@@ -72,6 +72,8 @@ OUTLOOK_MAX_EMAILS_PER_SESSION=10          # Optional: rate limit sends
 OUTLOOK_ALLOWED_RECIPIENTS=example.com     # Optional: restrict recipients
 OUTLOOK_IMMUTABLE_IDS=true                 # Optional: IDs persist through folder moves
 OUTLOOK_AUTH_METHOD=device-code            # Optional: default auth method (device-code|browser)
+OUTLOOK_AUTH_AUDIENCE=common               # Optional: common|consumers|organizations|<tenant-guid> (v3.8.0; fixes AADSTS9002331 for personal-only Azure apps)
+OUTLOOK_DEFAULT_TIMEZONE=Australia/Melbourne  # Optional: overrides hardcoded default (v3.8.0)
 ```
 
 > The server reads `OUTLOOK_CLIENT_ID`/`OUTLOOK_CLIENT_SECRET` from `config.js`.
