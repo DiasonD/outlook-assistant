@@ -23,8 +23,8 @@ Outlook Assistant connects AI assistants to your Microsoft Outlook account throu
 
 <div align="center">
   <br />
-  <a href="docs/demo/outlook-assistant-demo.mp4">
-    <img src="docs/demo/outlook-assistant-demo.gif" alt="Outlook Assistant Demo — searching emails, reading, and drafting a reply" width="720" style="border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.12);" />
+  <a href="https://github.com/littlebearapps/outlook-assistant/blob/main/docs/demo/outlook-assistant-demo.mp4">
+    <img src="https://raw.githubusercontent.com/littlebearapps/outlook-assistant/main/docs/demo/outlook-assistant-demo.gif" alt="Outlook Assistant Demo — searching emails, reading, and drafting a reply" width="720" style="border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.12);" />
   </a>
   <br />
   <sub>Search inbox → read &amp; summarise → draft a reply — all from the conversation</sub>
