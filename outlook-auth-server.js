@@ -305,7 +305,9 @@ function exchangeCodeForTokens(code) {
     const tokenUrl = new URL(AUTH_CONFIG.tokenEndpoint);
     const options = {
       hostname: tokenUrl.hostname,
-      path: tokenUrl.pathname,
+      // Preserve any query string on the endpoint (none today, but future-safe
+      // if Microsoft ever adds hint params to the token URL).
+      path: tokenUrl.pathname + tokenUrl.search,
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',

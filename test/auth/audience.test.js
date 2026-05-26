@@ -83,4 +83,49 @@ describe('OUTLOOK_AUTH_AUDIENCE', () => {
       `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize`
     );
   });
+
+  describe('startup validation', () => {
+    let warnSpy;
+
+    beforeEach(() => {
+      warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      warnSpy.mockRestore();
+    });
+
+    test('warns on unrecognised value (typo)', () => {
+      process.env.OUTLOOK_AUTH_AUDIENCE = 'not-a-tenant';
+      require('../../config');
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toMatch(/OUTLOOK_AUTH_AUDIENCE/);
+      expect(warnSpy.mock.calls[0][0]).toMatch(/not-a-tenant/);
+    });
+
+    test('does not warn on the four valid forms', () => {
+      const valid = [
+        undefined, // default -> 'common'
+        'common',
+        'consumers',
+        'organizations',
+        '11111111-2222-3333-4444-555555555555',
+      ];
+      for (const v of valid) {
+        warnSpy.mockClear();
+        jest.resetModules();
+        if (v === undefined) delete process.env.OUTLOOK_AUTH_AUDIENCE;
+        else process.env.OUTLOOK_AUTH_AUDIENCE = v;
+        require('../../config');
+        expect(warnSpy).not.toHaveBeenCalled();
+      }
+    });
+
+    test('warns on malformed GUID', () => {
+      // Missing one hex char in the last group — looks GUID-shaped but isn't.
+      process.env.OUTLOOK_AUTH_AUDIENCE = '11111111-2222-3333-4444-55555555555';
+      require('../../config');
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    });
+  });
 });
