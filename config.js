@@ -140,6 +140,9 @@ module.exports = {
   // Immutable IDs (opt-in: IDs persist through folder moves)
   USE_IMMUTABLE_IDS: process.env.OUTLOOK_IMMUTABLE_IDS === 'true',
 
-  // Timezone
-  DEFAULT_TIMEZONE: 'Australia/Melbourne', // Updated for Nathan's timezone
+  // Timezone — IANA zone (e.g. "Australia/Melbourne", "Europe/London",
+  // "America/New_York"). Override per-deployment via OUTLOOK_DEFAULT_TIMEZONE.
+  // Default preserves the historic value for backwards compatibility.
+  DEFAULT_TIMEZONE:
+    process.env.OUTLOOK_DEFAULT_TIMEZONE || 'Australia/Melbourne',
 };

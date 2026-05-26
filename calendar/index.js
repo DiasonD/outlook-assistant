@@ -6,6 +6,7 @@ const handleDeclineEvent = require('./decline');
 const handleCreateEvent = require('./create');
 const handleCancelEvent = require('./cancel');
 const handleDeleteEvent = require('./delete');
+const handleUpdateEvent = require('./update');
 
 // Calendar tool definitions (consolidated: 5 → 3)
 const calendarTools = [
@@ -74,7 +75,7 @@ const calendarTools = [
   {
     name: 'manage-event',
     description:
-      'Manage an existing calendar event. action=decline declines an invitation. action=cancel cancels an event you organised. action=delete permanently removes an event.',
+      'Manage an existing calendar event. action=update edits fields (subject, start, end, attendees, body, location, isOnlineMeeting, sensitivity, showAs, importance, categories, reminderMinutesBeforeStart) without rebuilding the event; pass dryRun=true to preview the PATCH payload. action=decline declines an invitation. action=cancel cancels an event you organised. action=delete permanently removes an event.',
     annotations: {
       title: 'Manage Calendar Event',
       readOnlyHint: false,
@@ -86,7 +87,7 @@ const calendarTools = [
       properties: {
         action: {
           type: 'string',
-          enum: ['decline', 'cancel', 'delete'],
+          enum: ['update', 'decline', 'cancel', 'delete'],
           description: 'Action to perform (required)',
         },
         eventId: {
@@ -101,6 +102,98 @@ const calendarTools = [
         comment: {
           type: 'string',
           description: 'Optional comment for declining or cancelling the event',
+        },
+        subject: {
+          type: 'string',
+          description: 'New subject (action=update only)',
+        },
+        start: {
+          oneOf: [
+            { type: 'string' },
+            {
+              type: 'object',
+              properties: {
+                dateTime: { type: 'string' },
+                timeZone: { type: 'string' },
+              },
+              required: ['dateTime'],
+              additionalProperties: false,
+            },
+          ],
+          description:
+            'New start time as ISO 8601 string or {dateTime, timeZone} object (action=update only)',
+        },
+        end: {
+          oneOf: [
+            { type: 'string' },
+            {
+              type: 'object',
+              properties: {
+                dateTime: { type: 'string' },
+                timeZone: { type: 'string' },
+              },
+              required: ['dateTime'],
+              additionalProperties: false,
+            },
+          ],
+          description:
+            'New end time as ISO 8601 string or {dateTime, timeZone} object (action=update only)',
+        },
+        attendees: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'Full replacement attendee list — pass complete desired list, or [] to clear (action=update only)',
+        },
+        body: {
+          type: 'string',
+          description: 'New body content (action=update only)',
+        },
+        location: {
+          type: 'string',
+          description: 'New location display name (action=update only)',
+        },
+        isOnlineMeeting: {
+          type: 'boolean',
+          description: 'Toggle online meeting flag (action=update only)',
+        },
+        sensitivity: {
+          type: 'string',
+          enum: ['normal', 'personal', 'private', 'confidential'],
+          description: 'Event sensitivity classification (action=update only)',
+        },
+        showAs: {
+          type: 'string',
+          enum: [
+            'free',
+            'tentative',
+            'busy',
+            'oof',
+            'workingElsewhere',
+            'unknown',
+          ],
+          description: 'Free/busy status shown to others (action=update only)',
+        },
+        importance: {
+          type: 'string',
+          enum: ['low', 'normal', 'high'],
+          description: 'Event importance flag (action=update only)',
+        },
+        categories: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'Full replacement category list — pass [] to clear (action=update only)',
+        },
+        reminderMinutesBeforeStart: {
+          type: 'number',
+          description:
+            'Minutes before start to fire the reminder (action=update only)',
+        },
+        dryRun: {
+          type: 'boolean',
+          description:
+            'Preview the PATCH without applying it (action=update only). Returns the body that would be sent to Graph.',
         },
       },
       additionalProperties: false,
@@ -126,6 +219,8 @@ const calendarTools = [
       }
       args = normalised;
       switch (args.action) {
+        case 'update':
+          return handleUpdateEvent(args);
         case 'decline':
           return handleDeclineEvent(args);
         case 'cancel':
@@ -137,7 +232,7 @@ const calendarTools = [
             content: [
               {
                 type: 'text',
-                text: "Invalid action. Use 'decline', 'cancel', or 'delete'.",
+                text: "Invalid action. Use 'update', 'decline', 'cancel', or 'delete'.",
               },
             ],
           };
@@ -153,4 +248,5 @@ module.exports = {
   handleCreateEvent,
   handleCancelEvent,
   handleDeleteEvent,
+  handleUpdateEvent,
 };
