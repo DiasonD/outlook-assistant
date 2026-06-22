@@ -1,7 +1,10 @@
 const {
   WELL_KNOWN_FOLDERS,
   resolveFolderPath,
+  resolveFolderRef,
   getFolderIdByName,
+  getAllFolders,
+  buildMailboxPrefix,
 } = require('../../email/folder-utils');
 const { callGraphAPI } = require('../../utils/graph-api');
 
@@ -234,5 +237,237 @@ describe('getFolderIdByName', () => {
 
     expect(result).toBeNull();
     expect(callGraphAPI).toHaveBeenCalledTimes(1);
+  });
+
+  test('should find a nested subfolder by name via recursion', async () => {
+    // Top-level exact filter miss, then top-level list, then childFolders
+    callGraphAPI
+      .mockResolvedValueOnce({ value: [] }) // exact filter
+      .mockResolvedValueOnce({
+        value: [
+          { id: 'inbox-id', displayName: 'Inbox', childFolderCount: 2 },
+          { id: 'sent-id', displayName: 'Sent Items', childFolderCount: 0 },
+        ],
+      })
+      .mockResolvedValueOnce({
+        value: [
+          { id: 'vendor-id', displayName: 'Vendors', childFolderCount: 0 },
+          { id: 'acme-id', displayName: 'Acme', childFolderCount: 0 },
+        ],
+      });
+
+    const result = await getFolderIdByName(mockAccessToken, 'Acme');
+
+    expect(result).toBe('acme-id');
+    expect(callGraphAPI).toHaveBeenCalledTimes(3);
+  });
+
+  test('should target a shared mailbox when mailbox is provided', async () => {
+    callGraphAPI.mockResolvedValueOnce({
+      value: [{ id: 'shared-folder', displayName: 'Projekte' }],
+    });
+
+    const result = await getFolderIdByName(
+      mockAccessToken,
+      'Projekte',
+      'shared@company.com'
+    );
+
+    expect(result).toBe('shared-folder');
+    expect(callGraphAPI).toHaveBeenCalledWith(
+      mockAccessToken,
+      'GET',
+      'users/shared@company.com/mailFolders',
+      null,
+      { $filter: `displayName eq 'Projekte'` }
+    );
+  });
+});
+
+describe('buildMailboxPrefix', () => {
+  test('returns "me" for null/empty', () => {
+    expect(buildMailboxPrefix(null)).toBe('me');
+    expect(buildMailboxPrefix('')).toBe('me');
+    expect(buildMailboxPrefix(undefined)).toBe('me');
+  });
+
+  test('builds users/{email} prefix for a shared mailbox', () => {
+    expect(buildMailboxPrefix('shared@company.com')).toBe(
+      'users/shared@company.com'
+    );
+  });
+
+  test('passes through an already-qualified prefix', () => {
+    expect(buildMailboxPrefix('users/x@y.com')).toBe('users/x@y.com');
+    expect(buildMailboxPrefix('me')).toBe('me');
+  });
+});
+
+describe('resolveFolderRef', () => {
+  const mockAccessToken = 'dummy_access_token';
+
+  beforeEach(() => {
+    callGraphAPI.mockClear();
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    console.error.mockRestore();
+  });
+
+  test('resolves a well-known folder to its segment without an API call', async () => {
+    const result = await resolveFolderRef(mockAccessToken, 'archive');
+    expect(result).toBe('archive');
+    expect(callGraphAPI).not.toHaveBeenCalled();
+  });
+
+  test('resolves a nested folder path by walking the tree', async () => {
+    // first segment "Inbox" is well-known → segment "inbox"
+    // then childFolders of inbox → Vendors, then childFolders of Vendors → Acme
+    callGraphAPI
+      .mockResolvedValueOnce({
+        value: [{ id: 'vendors-id', displayName: 'Vendors' }],
+      })
+      .mockResolvedValueOnce({
+        value: [{ id: 'acme-id', displayName: 'Acme' }],
+      });
+
+    const result = await resolveFolderRef(
+      mockAccessToken,
+      'Inbox/Vendors/Acme',
+      'shared@company.com'
+    );
+
+    expect(result).toBe('acme-id');
+    expect(callGraphAPI).toHaveBeenNthCalledWith(
+      1,
+      mockAccessToken,
+      'GET',
+      'users/shared@company.com/mailFolders/inbox/childFolders',
+      null,
+      { $top: 100 }
+    );
+  });
+
+  test('passes through a raw folder ID when nothing resolves', async () => {
+    // looks-like-ID heuristic: long, no spaces, base64url chars
+    callGraphAPI
+      .mockResolvedValueOnce({ value: [] }) // exact filter
+      .mockResolvedValueOnce({ value: [] }); // top-level list
+
+    const rawId =
+      'AAMkADRmMDExLT1234567890abcdefABCDEF_ghijklmnopqrstuvwxyz0987654321=';
+    const result = await resolveFolderRef(mockAccessToken, rawId);
+
+    expect(result).toBe(rawId);
+  });
+
+  test('returns null for an unresolved short name', async () => {
+    callGraphAPI
+      .mockResolvedValueOnce({ value: [] })
+      .mockResolvedValueOnce({ value: [{ id: 'x', displayName: 'Other' }] });
+
+    const result = await resolveFolderRef(mockAccessToken, 'Nope');
+    expect(result).toBeNull();
+  });
+});
+
+describe('resolveFolderPath (shared mailbox)', () => {
+  const mockAccessToken = 'dummy_access_token';
+
+  beforeEach(() => {
+    callGraphAPI.mockClear();
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    console.error.mockRestore();
+  });
+
+  test('builds a shared-mailbox well-known path without an API call', async () => {
+    const result = await resolveFolderPath(
+      mockAccessToken,
+      'inbox',
+      'shared@company.com'
+    );
+    expect(result).toBe('users/shared@company.com/mailFolders/inbox/messages');
+    expect(callGraphAPI).not.toHaveBeenCalled();
+  });
+
+  test('resolves a shared-mailbox custom folder to its message endpoint', async () => {
+    callGraphAPI.mockResolvedValueOnce({
+      value: [{ id: 'custom-id', displayName: 'Archiv' }],
+    });
+
+    const result = await resolveFolderPath(
+      mockAccessToken,
+      'Archiv',
+      'shared@company.com'
+    );
+
+    expect(result).toBe(
+      'users/shared@company.com/mailFolders/custom-id/messages'
+    );
+  });
+});
+
+describe('getAllFolders', () => {
+  const mockAccessToken = 'dummy_access_token';
+
+  beforeEach(() => {
+    callGraphAPI.mockClear();
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    console.error.mockRestore();
+  });
+
+  test('enumerates a shared mailbox tree recursively with paths', async () => {
+    callGraphAPI
+      .mockResolvedValueOnce({
+        value: [
+          {
+            id: 'inbox-id',
+            displayName: 'Inbox',
+            parentFolderId: 'root',
+            childFolderCount: 1,
+          },
+          {
+            id: 'sent-id',
+            displayName: 'Sent Items',
+            parentFolderId: 'root',
+            childFolderCount: 0,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        value: [
+          {
+            id: 'vendors-id',
+            displayName: 'Vendors',
+            parentFolderId: 'inbox-id',
+            childFolderCount: 0,
+          },
+        ],
+      });
+
+    const folders = await getAllFolders(mockAccessToken, {
+      mailbox: 'shared@company.com',
+    });
+
+    expect(folders).toHaveLength(3);
+    const vendors = folders.find((f) => f.displayName === 'Vendors');
+    expect(vendors.folderPath).toBe('Inbox/Vendors');
+    expect(vendors.parentFolder).toBe('Inbox');
+    expect(vendors.isTopLevel).toBe(false);
+    expect(callGraphAPI).toHaveBeenNthCalledWith(
+      1,
+      mockAccessToken,
+      'GET',
+      'users/shared@company.com/mailFolders',
+      null,
+      expect.objectContaining({ $top: 100 })
+    );
   });
 });

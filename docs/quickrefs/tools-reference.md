@@ -127,7 +127,7 @@ Quick reference for all 22 MCP tools across 9 modules. Each tool includes MCP sa
 
 | Tool | Description | Safety | Key Parameters |
 |------|-------------|--------|----------------|
-| `access-shared-mailbox` | Read shared mailbox | read-only | `sharedMailbox` (or alias `email`), `folder`, `count` |
+| `access-shared-mailbox` | Read shared mailbox (incl. custom subfolders) or enumerate its folder tree | read-only | `sharedMailbox` (or alias `email`), `folder` (name/path), `folderId`, `listFolders`, `count` |
 | `find-meeting-rooms` | Search meeting rooms | read-only | `query`, `building`, `capacity` |
 
 ## Safety Annotations
@@ -229,6 +229,18 @@ update-email(action: "flag", id: "...", dueDateTime: "2026-03-01T09:00:00Z")
 
 // Access shared mailbox
 access-shared-mailbox(sharedMailbox: "team@company.com", folder: "inbox")
+
+// Discover a shared mailbox's custom subfolders (names, paths, IDs)
+access-shared-mailbox(sharedMailbox: "team@company.com", listFolders: true)
+
+// Read a custom subfolder of a shared mailbox by path
+access-shared-mailbox(sharedMailbox: "team@company.com", folder: "Inbox/Vendors/Acme")
+
+// List a shared mailbox's folder hierarchy via the folders tool
+folders(action: "list", sharedMailbox: "team@company.com", includeChildren: true)
+
+// Search within a shared mailbox's custom folder
+search-emails(sharedMailbox: "team@company.com", folder: "Archiv", query: "invoice")
 
 // Delta sync (initial — returns emails + deltaToken)
 search-emails(deltaMode: true)

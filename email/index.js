@@ -33,7 +33,7 @@ const emailTools = [
   {
     name: 'search-emails',
     description:
-      'Search, list, delta-sync, or thread-group emails — six modes selected by parameters (read-only). With no params: lists recent emails in `folder` (default `inbox`). With `query`/`from`/`to`/`subject`/date filters: full search (combines via OData filter). With `kqlQuery`: raw Keyword Query Language for advanced server-side search. With `deltaMode: true`: returns current state plus a `deltaToken`; pass the token back on the next call for incremental changes only — ideal for inbox monitoring. With `groupByConversation: true`: returns conversation threads. With `conversationId`: returns all messages in a single thread. With `internetMessageId`: looks up a message by its RFC Message-ID header. Personal Outlook.com accounts have limited `$search` support — this tool falls back through OData filters / boolean filters / recent listing automatically, but structured filters (`from`/`subject`/`receivedAfter`/`hasAttachments`/`unreadOnly`) return cleaner results. Returns paged messages with id/subject/from/receivedDateTime/preview by default; use `outputVerbosity` to expand.',
+      'Search, list, delta-sync, or thread-group emails — six modes selected by parameters (read-only). With no params: lists recent emails in `folder` (default `inbox`). With `query`/`from`/`to`/`subject`/date filters: full search (combines via OData filter). With `kqlQuery`: raw Keyword Query Language for advanced server-side search. With `deltaMode: true`: returns current state plus a `deltaToken`; pass the token back on the next call for incremental changes only — ideal for inbox monitoring. With `groupByConversation: true`: returns conversation threads. With `conversationId`: returns all messages in a single thread. With `internetMessageId`: looks up a message by its RFC Message-ID header. Set `sharedMailbox` (or alias `email`) to search a shared/delegated mailbox instead of the signed-in account — works with custom folders and nested folder paths. Personal Outlook.com accounts have limited `$search` support — this tool falls back through OData filters / boolean filters / recent listing automatically, but structured filters (`from`/`subject`/`receivedAfter`/`hasAttachments`/`unreadOnly`) return cleaner results. Returns paged messages with id/subject/from/receivedDateTime/preview by default; use `outputVerbosity` to expand.',
     annotations: {
       title: 'Search Emails',
       readOnlyHint: true,
@@ -75,7 +75,17 @@ const emailTools = [
         },
         folder: {
           type: 'string',
-          description: "Email folder (default: 'inbox')",
+          description:
+            "Email folder (default: 'inbox'). Accepts a well-known name, a custom/localized display name, or a nested path like `Inbox/Subfolder`.",
+        },
+        sharedMailbox: {
+          type: 'string',
+          description:
+            'Email address of a shared/delegated mailbox to search instead of the signed-in account. Combine with `folder` (incl. custom subfolders/paths) or `searchAllFolders`.',
+        },
+        email: {
+          type: 'string',
+          description: 'Alias for `sharedMailbox`.',
         },
         from: {
           type: 'string',

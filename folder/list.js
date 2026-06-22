@@ -12,16 +12,21 @@ const { ensureAuthenticated } = require('../auth');
 async function handleListFolders(args) {
   const includeItemCounts = args.includeItemCounts === true;
   const includeChildren = args.includeChildren === true;
+  // Target a shared/delegated mailbox instead of the signed-in account.
+  const sharedMailbox = args.sharedMailbox || args.email || null;
 
   try {
     // Get access token
     const accessToken = await ensureAuthenticated();
 
-    // Get all mail folders
+    // Get all mail folders (signed-in account or a shared mailbox)
     const folders = await getAllFoldersHierarchy(
       accessToken,
-      includeItemCounts
+      includeItemCounts,
+      sharedMailbox
     );
+
+    const heading = sharedMailbox ? `\n\nMailbox: ${sharedMailbox}` : '';
 
     // If including children, format as hierarchy
     if (includeChildren) {
@@ -29,7 +34,7 @@ async function handleListFolders(args) {
         content: [
           {
             type: 'text',
-            text: formatFolderHierarchy(folders, includeItemCounts),
+            text: formatFolderHierarchy(folders, includeItemCounts) + heading,
           },
         ],
       };
@@ -39,7 +44,7 @@ async function handleListFolders(args) {
         content: [
           {
             type: 'text',
-            text: formatFolderList(folders, includeItemCounts),
+            text: formatFolderList(folders, includeItemCounts) + heading,
           },
         ],
       };
@@ -71,9 +76,16 @@ async function handleListFolders(args) {
  * Get all mail folders with hierarchy information
  * @param {string} accessToken - Access token
  * @param {boolean} includeItemCounts - Include item counts in response
+ * @param {string|null} [sharedMailbox] - Shared mailbox email, or null for the signed-in account
  * @returns {Promise<Array>} - Array of folder objects with hierarchy
  */
-async function getAllFoldersHierarchy(accessToken, includeItemCounts) {
+async function getAllFoldersHierarchy(
+  accessToken,
+  includeItemCounts,
+  sharedMailbox = null
+) {
+  const prefix = sharedMailbox ? `users/${sharedMailbox}` : 'me';
+
   try {
     // Determine select fields based on whether to include counts
     const selectFields = includeItemCounts
@@ -84,7 +96,7 @@ async function getAllFoldersHierarchy(accessToken, includeItemCounts) {
     const response = await callGraphAPI(
       accessToken,
       'GET',
-      'me/mailFolders',
+      `${prefix}/mailFolders`,
       null,
       {
         $top: 100,
@@ -96,44 +108,49 @@ async function getAllFoldersHierarchy(accessToken, includeItemCounts) {
       return [];
     }
 
-    // Get child folders for folders with children
-    const foldersWithChildren = response.value.filter(
-      (f) => f.childFolderCount > 0
-    );
+    const topLevelFolders = response.value.map((folder) => ({
+      ...folder,
+      isTopLevel: true,
+    }));
 
-    const childFolderPromises = foldersWithChildren.map(async (folder) => {
+    // Recursively gather descendants for any folder reporting children.
+    async function gatherChildren(folder) {
+      let childResponse;
       try {
-        const childResponse = await callGraphAPI(
+        childResponse = await callGraphAPI(
           accessToken,
           'GET',
-          `me/mailFolders/${folder.id}/childFolders`,
+          `${prefix}/mailFolders/${folder.id}/childFolders`,
           null,
-          { $select: selectFields }
+          { $top: 100, $select: selectFields }
         );
-
-        // Add parent folder info to each child
-        const childFolders = childResponse.value || [];
-        childFolders.forEach((child) => {
-          child.parentFolder = folder.displayName;
-        });
-
-        return childFolders;
       } catch (error) {
         console.error(
           `Error getting child folders for "${folder.displayName}": ${error.message}`
         );
         return [];
       }
-    });
 
-    const childFolders = await Promise.all(childFolderPromises);
-    const allChildFolders = childFolders.flat();
+      const children = childResponse.value || [];
+      const result = [];
+      for (const child of children) {
+        child.parentFolder = folder.displayName;
+        result.push(child);
+        if (child.childFolderCount > 0) {
+          const grandchildren = await gatherChildren(child);
+          result.push(...grandchildren);
+        }
+      }
+      return result;
+    }
 
-    // Add top-level flag to parent folders
-    const topLevelFolders = response.value.map((folder) => ({
-      ...folder,
-      isTopLevel: true,
-    }));
+    const allChildFolders = [];
+    for (const folder of topLevelFolders.filter(
+      (f) => f.childFolderCount > 0
+    )) {
+      const descendants = await gatherChildren(folder);
+      allChildFolders.push(...descendants);
+    }
 
     // Combine all folders
     return [...topLevelFolders, ...allChildFolders];

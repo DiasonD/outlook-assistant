@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Shared-mailbox custom subfolder access** — the shared-mailbox tools can now
+  reach custom subfolders and localized folder names, not just the handful of
+  Microsoft well-known folders. Closes the gap where custom folders returned
+  `ErrorInvalidIdMalformed` and could not be enumerated.
+  - `access-shared-mailbox` now resolves `folder` as a well-known name, a
+    custom/localized display name (e.g. `Archiv`), or a nested path
+    (e.g. `Inbox/Vendors/Acme`); accepts a raw `folderId`; and supports
+    `listFolders: true` to enumerate the mailbox's full folder tree (names,
+    paths, IDs, item counts).
+  - `folders` (action `list`) accepts `sharedMailbox` (alias `email`) to
+    enumerate a shared/delegated mailbox's folder hierarchy instead of the
+    signed-in account's.
+  - `search-emails` accepts `sharedMailbox` (alias `email`) to scope a search to
+    a shared mailbox — works with custom folders, nested paths, and
+    `searchAllFolders`.
+  - Folder name → ID resolution (`email/folder-utils.js`) is now mailbox-aware
+    and recurses into subfolders, so a bare custom subfolder name resolves even
+    when nested under Inbox.
+
 ## [3.8.1] - 2026-05
 
 Patch release driven by a glama.ai / safemcp.info scoring audit. Lifts the

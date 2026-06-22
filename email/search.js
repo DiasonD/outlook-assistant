@@ -50,6 +50,9 @@ async function handleSearchEmails(args) {
   const receivedBefore = args.receivedBefore || '';
   const searchAllFolders = args.searchAllFolders || false;
   const kqlQuery = args.kqlQuery || ''; // Raw KQL for advanced users
+  // Optional: scope the search to a shared/delegated mailbox rather than the
+  // signed-in account. Accepts a custom/localized folder name or nested path.
+  const sharedMailbox = args.sharedMailbox || args.email || null;
 
   // Select fields based on verbosity
   const selectFields = getEmailFields(
@@ -60,13 +63,17 @@ async function handleSearchEmails(args) {
     // Get access token
     const accessToken = await ensureAuthenticated();
 
-    // Determine endpoint - search all folders or specific folder
+    // Determine endpoint - search all folders or specific folder, scoped to
+    // the signed-in account or a shared mailbox.
     let endpoint;
     if (searchAllFolders) {
-      endpoint = 'me/messages';
-      console.error('Searching across all mail folders');
+      const prefix = sharedMailbox ? `users/${sharedMailbox}` : 'me';
+      endpoint = `${prefix}/messages`;
+      console.error(
+        `Searching across all mail folders${sharedMailbox ? ` in ${sharedMailbox}` : ''}`
+      );
     } else {
-      endpoint = await resolveFolderPath(accessToken, folder);
+      endpoint = await resolveFolderPath(accessToken, folder, sharedMailbox);
       console.error(`Using endpoint: ${endpoint} for folder: ${folder}`);
     }
 

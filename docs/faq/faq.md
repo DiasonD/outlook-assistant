@@ -38,6 +38,16 @@ Yes. Outlook Assistant supports both personal Microsoft accounts (Outlook.com, H
 
 On personal accounts, Microsoft's `$search` API has limited support for free-text queries, so Outlook Assistant falls back through up to four progressive search strategies (server `$search` → `contains(subject)` → client-side body/subject/from scan → recent message listing) and exposes which strategy ran in the response's `_meta.searchMetadata` block. For the most direct results, use structured filters (`from`, `subject`, `to`, `receivedAfter`) where possible. The full per-feature compatibility matrix is in the [README's Account Compatibility section](../README.md#account-compatibility).
 
+## How do I access custom subfolders of a shared mailbox?
+
+Shared/delegated mailbox tools reach **custom subfolders and localized folder names**, not just Microsoft's well-known folders (Inbox, Sent, Archive, etc.). Three entry points:
+
+1. **Discover the folder tree.** Call `access-shared-mailbox` with `listFolders: true` (or `folders action=list, sharedMailbox: "shared@company.com"`) to enumerate every folder with its name, full path, ID, and item counts.
+2. **Read a custom folder.** Pass `folder` as a display name (`Archiv`), a nested path (`Inbox/Vendors/Acme`), or a raw `folderId` to `access-shared-mailbox`. Localized and case-insensitive names resolve correctly.
+3. **Search within a custom folder.** `search-emails` accepts `sharedMailbox` (alias `email`) alongside `folder` (name or path) or `searchAllFolders: true`.
+
+This requires the work/school **`Mail.Read.Shared`** permission and delegate access to the mailbox (admin-configured in Exchange). Earlier versions only resolved well-known folder names, so custom folders returned an `ErrorInvalidIdMalformed` error — that gap is closed.
+
 ## What Microsoft Graph permissions does Outlook Assistant need, and why?
 
 Outlook Assistant uses delegated Microsoft Graph permissions — it accesses your mailbox on your behalf, never with elevated rights:

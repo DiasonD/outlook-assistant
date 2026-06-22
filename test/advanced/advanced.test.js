@@ -72,6 +72,119 @@ describe('handleAccessSharedMailbox', () => {
     expect(result._meta.count).toBe(2);
   });
 
+  it('should resolve a well-known folder against the shared mailbox endpoint', async () => {
+    callGraphAPI.mockResolvedValue({ value: mockMessages });
+
+    await handleAccessSharedMailbox({
+      sharedMailbox: 'shared@company.com',
+      folder: 'archive',
+    });
+
+    // Well-known folders resolve without an extra lookup; the messages call
+    // should hit the shared mailbox archive folder.
+    const messagesCall = callGraphAPI.mock.calls.find(
+      (c) => typeof c[2] === 'string' && c[2].endsWith('/messages')
+    );
+    expect(messagesCall[2]).toBe(
+      'users/shared@company.com/mailFolders/archive/messages'
+    );
+  });
+
+  it('should resolve a custom subfolder name to its ID before reading', async () => {
+    callGraphAPI
+      // resolveFolderRef → getFolderIdByName exact filter
+      .mockResolvedValueOnce({
+        value: [{ id: 'archiv-id', displayName: 'Archiv' }],
+      })
+      // messages fetch
+      .mockResolvedValueOnce({ value: mockMessages });
+
+    const result = await handleAccessSharedMailbox({
+      sharedMailbox: 'shared@company.com',
+      folder: 'Archiv',
+    });
+
+    expect(result._meta.count).toBe(2);
+    const messagesCall = callGraphAPI.mock.calls.find(
+      (c) => typeof c[2] === 'string' && c[2].endsWith('/messages')
+    );
+    expect(messagesCall[2]).toBe(
+      'users/shared@company.com/mailFolders/archiv-id/messages'
+    );
+  });
+
+  it('should use folderId directly without resolution', async () => {
+    callGraphAPI.mockResolvedValueOnce({ value: mockMessages });
+
+    await handleAccessSharedMailbox({
+      sharedMailbox: 'shared@company.com',
+      folderId: 'explicit-folder-id',
+    });
+
+    // Only one call (the messages fetch) — no folder resolution lookups.
+    expect(callGraphAPI).toHaveBeenCalledTimes(1);
+    expect(callGraphAPI.mock.calls[0][2]).toBe(
+      'users/shared@company.com/mailFolders/explicit-folder-id/messages'
+    );
+  });
+
+  it('should report a helpful error when a custom folder cannot be resolved', async () => {
+    // exact filter empty, top-level list empty → unresolved
+    callGraphAPI
+      .mockResolvedValueOnce({ value: [] })
+      .mockResolvedValueOnce({ value: [] });
+
+    const result = await handleAccessSharedMailbox({
+      sharedMailbox: 'shared@company.com',
+      folder: 'DoesNotExist',
+    });
+
+    expect(result.content[0].text).toContain('not found');
+    expect(result.content[0].text).toContain('listFolders');
+  });
+
+  it('should enumerate folders with listFolders: true', async () => {
+    callGraphAPI
+      .mockResolvedValueOnce({
+        value: [
+          {
+            id: 'inbox-id',
+            displayName: 'Inbox',
+            parentFolderId: 'root',
+            childFolderCount: 1,
+            totalItemCount: 10,
+            unreadItemCount: 2,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        value: [
+          {
+            id: 'sub-id',
+            displayName: 'Vendors',
+            parentFolderId: 'inbox-id',
+            childFolderCount: 0,
+            totalItemCount: 3,
+            unreadItemCount: 0,
+          },
+        ],
+      });
+
+    const result = await handleAccessSharedMailbox({
+      sharedMailbox: 'shared@company.com',
+      listFolders: true,
+    });
+
+    expect(result.content[0].text).toContain('Shared Mailbox Folders');
+    expect(result.content[0].text).toContain('Inbox');
+    expect(result.content[0].text).toContain('Vendors');
+    expect(result._meta.folderCount).toBe(2);
+    const vendors = result._meta.folders.find(
+      (f) => f.displayName === 'Vendors'
+    );
+    expect(vendors.folderPath).toBe('Inbox/Vendors');
+  });
+
   it('should handle minimal verbosity', async () => {
     callGraphAPI.mockResolvedValue({ value: mockMessages });
 

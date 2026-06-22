@@ -43,7 +43,7 @@ Outlook Assistant connects AI assistants to your Microsoft Outlook account throu
 - 🔄 **Track inbox changes** — delta sync detects new, modified, and deleted emails since your last check, with tokens for incremental polling
 - 👥 **Manage contacts** — search your contact book and organisational directory, create and update contact records
 - ⚙️ **Configure settings** — set out-of-office auto-replies, working hours, and time zone
-- 📬 **Access shared mailboxes** — read team inboxes and service accounts (Microsoft 365)
+- 📬 **Access shared mailboxes** — read team inboxes and service accounts, including custom subfolders and nested folder paths; enumerate, read, and search the full folder tree (Microsoft 365)
 - 🏢 **Find meeting rooms** — search by building, floor, capacity, AV equipment, and wheelchair accessibility (Microsoft 365)
 
 ### Why Outlook Assistant?
@@ -508,7 +508,7 @@ Full documentation: [docs/](docs/README.md)
 
 - **Personal account search**: Free-text `query` and `kqlQuery` rely on Microsoft's `$search` API, which has limited support on personal Outlook.com accounts. Outlook Assistant mitigates this with progressive search fallback (trying OData filters automatically), but for the most direct results, use structured filters (`from`, `subject`, `to`, `receivedAfter`).
 - **Focused Inbox**: Only available on work/school Microsoft 365 accounts.
-- **Shared mailboxes**: Require `Mail.Read.Shared` permission and a work/school account.
+- **Shared mailboxes**: Require `Mail.Read.Shared` permission and a work/school account. Custom subfolders are supported — pass `folder` as a display name or nested path (e.g. `Inbox/Vendors/Acme`), a raw `folderId`, or use `listFolders: true` (or `folders action=list, sharedMailbox: …`) to discover them.
 - **Meeting room search**: Requires `Place.Read.All` permission with admin consent (work/school accounts only).
 - **Export default path**: Exports save to the system temp directory by default. Use `savePath` or `outputDir` to specify a different location.
 

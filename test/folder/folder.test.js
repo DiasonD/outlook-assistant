@@ -79,6 +79,38 @@ describe('handleListFolders', () => {
     expect(result.content[0].text).toContain('No folders found');
   });
 
+  it('should enumerate a shared mailbox when sharedMailbox is provided', async () => {
+    callGraphAPI.mockResolvedValue({ value: mockFolders });
+
+    const result = await handleListFolders({
+      sharedMailbox: 'shared@company.com',
+    });
+
+    expect(result.content[0].text).toContain('Mailbox: shared@company.com');
+    // Folder enumeration should target the shared mailbox endpoint
+    expect(callGraphAPI).toHaveBeenCalledWith(
+      mockAccessToken,
+      'GET',
+      'users/shared@company.com/mailFolders',
+      null,
+      expect.objectContaining({ $top: 100 })
+    );
+  });
+
+  it('should accept email as an alias for sharedMailbox', async () => {
+    callGraphAPI.mockResolvedValue({ value: mockFolders });
+
+    await handleListFolders({ email: 'shared@company.com' });
+
+    expect(callGraphAPI).toHaveBeenCalledWith(
+      mockAccessToken,
+      'GET',
+      'users/shared@company.com/mailFolders',
+      null,
+      expect.objectContaining({ $top: 100 })
+    );
+  });
+
   it('should handle auth error', async () => {
     ensureAuthenticated.mockRejectedValue(new Error('Authentication required'));
 
