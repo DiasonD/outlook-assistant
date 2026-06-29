@@ -12,7 +12,7 @@ const folderTools = [
   {
     name: 'folders',
     description:
-      "Manage mail folders (tool-level destructiveHint=true because `delete` permanently removes a folder; `list` and `stats` are read-only sub-actions despite the annotation). action=`list` (default) returns the folder tree with id/displayName/parentFolderId (toggle `includeItemCounts` for unread/total, `includeChildren` for hierarchy); pass `sharedMailbox` (or alias `email`) to enumerate a shared/delegated mailbox's folders instead of the signed-in account's. action=`create` makes a new folder under the inbox (or under `folder`/`folderId`/`folderName`) and returns its id. action=`move` relocates emails (`emailIds` array) into `targetFolder` — pass `sharedMailbox` (or alias `email`) to move messages within a shared/delegated mailbox (the folder is resolved and the move performed in that mailbox; requires Mail.ReadWrite.Shared). action=`stats` returns counts (totalItemCount/unreadItemCount) suitable for pagination planning — pair with `outputVerbosity` to limit noise. action=`delete` permanently removes a folder and its contents — there is no recycle-bin recovery.",
+      "Manage mail folders (tool-level destructiveHint=true because `delete` permanently removes a folder; `list` and `stats` are read-only sub-actions despite the annotation). action=`list` (default) returns the folder tree with id/displayName/parentFolderId (toggle `includeItemCounts` for unread/total, `includeChildren` for hierarchy); pass `sharedMailbox` (or alias `email`) to enumerate a shared/delegated mailbox's folders instead of the signed-in account's. action=`create` makes a new folder at the root (or under `parentFolder`) and returns its id — pass `sharedMailbox` (or alias `email`) to create it inside a shared/delegated mailbox (requires Mail.ReadWrite.Shared). action=`move` relocates emails (`emailIds` array) into `targetFolder` — pass `sharedMailbox` (or alias `email`) to move messages within a shared/delegated mailbox (the folder is resolved and the move performed in that mailbox; requires Mail.ReadWrite.Shared). action=`stats` returns counts (totalItemCount/unreadItemCount) suitable for pagination planning — pair with `outputVerbosity` to limit noise. action=`delete` permanently removes a folder and its contents — there is no recycle-bin recovery.",
     annotations: {
       title: 'Mail Folders',
       readOnlyHint: false,
@@ -39,11 +39,11 @@ const folderTools = [
         sharedMailbox: {
           type: 'string',
           description:
-            'Email address of a shared/delegated mailbox to target instead of the signed-in account (action=list enumerates its folders; action=move files messages within it). Requires delegate access + Mail.Read.Shared (list) / Mail.ReadWrite.Shared (move).',
+            'Email address of a shared/delegated mailbox to target instead of the signed-in account (action=list enumerates its folders; action=move files messages within it; action=create makes a folder inside it). Requires delegate access + Mail.Read.Shared (list) / Mail.ReadWrite.Shared (move/create).',
         },
         email: {
           type: 'string',
-          description: 'Alias for `sharedMailbox` (action=list/move).',
+          description: 'Alias for `sharedMailbox` (action=list/move/create).',
         },
         // create params
         name: {

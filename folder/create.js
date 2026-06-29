@@ -3,7 +3,10 @@
  */
 const { callGraphAPI } = require('../utils/graph-api');
 const { ensureAuthenticated } = require('../auth');
-const { getFolderIdByName } = require('../email/folder-utils');
+const {
+  getFolderIdByName,
+  buildMailboxPrefix,
+} = require('../email/folder-utils');
 
 /**
  * Create folder handler
@@ -13,6 +16,7 @@ const { getFolderIdByName } = require('../email/folder-utils');
 async function handleCreateFolder(args) {
   const folderName = args.name;
   const parentFolder = args.parentFolder || '';
+  const sharedMailbox = args.sharedMailbox || args.email || null;
 
   if (!folderName) {
     return {
@@ -33,7 +37,8 @@ async function handleCreateFolder(args) {
     const result = await createMailFolder(
       accessToken,
       folderName,
-      parentFolder
+      parentFolder,
+      sharedMailbox
     );
 
     return {
@@ -77,10 +82,21 @@ async function handleCreateFolder(args) {
  * @param {string} parentFolderName - Name of the parent folder (optional)
  * @returns {Promise<object>} - Result object with status and message
  */
-async function createMailFolder(accessToken, folderName, parentFolderName) {
+async function createMailFolder(
+  accessToken,
+  folderName,
+  parentFolderName,
+  mailbox = null
+) {
   try {
+    const prefix = buildMailboxPrefix(mailbox);
+
     // Check if a folder with this name already exists
-    const existingFolder = await getFolderIdByName(accessToken, folderName);
+    const existingFolder = await getFolderIdByName(
+      accessToken,
+      folderName,
+      mailbox
+    );
     if (existingFolder) {
       return {
         success: false,
@@ -89,9 +105,13 @@ async function createMailFolder(accessToken, folderName, parentFolderName) {
     }
 
     // If parent folder specified, find its ID
-    let endpoint = 'me/mailFolders';
+    let endpoint = `${prefix}/mailFolders`;
     if (parentFolderName) {
-      const parentId = await getFolderIdByName(accessToken, parentFolderName);
+      const parentId = await getFolderIdByName(
+        accessToken,
+        parentFolderName,
+        mailbox
+      );
       if (!parentId) {
         return {
           success: false,
@@ -99,7 +119,7 @@ async function createMailFolder(accessToken, folderName, parentFolderName) {
         };
       }
 
-      endpoint = `me/mailFolders/${parentId}/childFolders`;
+      endpoint = `${prefix}/mailFolders/${parentId}/childFolders`;
     }
 
     // Create the folder

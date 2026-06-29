@@ -72,7 +72,7 @@ Your Microsoft account must also have been granted access (Full Access / delegat
 
 ## Tips
 
-- `access-shared-mailbox` itself is read-only, and you can't *send* from a shared mailbox through Outlook Assistant — but you can organise one: `folders action=move`, `apply-category`, and `update-email` (flag/mark-read) all accept `sharedMailbox` (alias `email`) with `Mail.ReadWrite.Shared`
+- `access-shared-mailbox` itself is read-only, and you can't *send* from a shared mailbox through Outlook Assistant — but you can organise one: `folders action=move`, `folders action=create`, `apply-category`, and `update-email` (flag/mark-read) all accept `sharedMailbox` (alias `email`) with `Mail.ReadWrite.Shared`
 - Use `outputVerbosity: "minimal"` for quick checks on high-volume shared inboxes
 - Auto-approved by MCP clients that support annotations (read-only tool)
 

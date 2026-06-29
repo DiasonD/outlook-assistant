@@ -48,7 +48,7 @@ Shared/delegated mailbox tools reach **custom subfolders and localized folder na
 
 This requires the work/school **`Mail.Read.Shared`** permission and delegate access to the mailbox (admin-configured in Exchange). Earlier versions only resolved well-known folder names, so custom folders returned an `ErrorInvalidIdMalformed` error — that gap is closed.
 
-You can also **write** to a shared mailbox — move messages between its folders (`folders action=move, sharedMailbox: …`), apply categories (`apply-category`), and flag/mark-read (`update-email`) all accept `sharedMailbox` (alias `email`). Writes additionally need the **`Mail.ReadWrite.Shared`** permission; after adding it in Azure you must re-authenticate so the refreshed token carries the new scope. Without it, write operations fall back to your own mailbox and fail with `404 ErrorInvalidMailboxItemId`.
+You can also **write** to a shared mailbox — move messages between its folders (`folders action=move, sharedMailbox: …`), create folders (`folders action=create`), apply categories (`apply-category`), and flag/mark-read (`update-email`) all accept `sharedMailbox` (alias `email`). Writes additionally need the **`Mail.ReadWrite.Shared`** permission; after adding it in Azure you must re-authenticate so the refreshed token carries the new scope. Without it, write operations fall back to your own mailbox and fail with `404 ErrorInvalidMailboxItemId`.
 
 ## What Microsoft Graph permissions does Outlook Assistant need, and why?
 

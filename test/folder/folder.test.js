@@ -196,6 +196,76 @@ describe('handleCreateFolder', () => {
     expect(result.content[0].text).toContain('not found');
   });
 
+  it('should create a folder inside a shared mailbox at root', async () => {
+    getFolderIdByName.mockResolvedValueOnce(null); // no existing folder
+    callGraphAPI.mockResolvedValue({ id: 'shared-folder-id' });
+
+    const result = await handleCreateFolder({
+      name: 'Lieferanten',
+      sharedMailbox: 'shared@company.com',
+    });
+
+    expect(result.content[0].text).toContain('Successfully created folder');
+    // Duplicate check must be scoped to the shared mailbox
+    expect(getFolderIdByName).toHaveBeenCalledWith(
+      mockAccessToken,
+      'Lieferanten',
+      'shared@company.com'
+    );
+    // Create POST must target the shared mailbox
+    expect(callGraphAPI).toHaveBeenCalledWith(
+      mockAccessToken,
+      'POST',
+      'users/shared@company.com/mailFolders',
+      { displayName: 'Lieferanten' }
+    );
+  });
+
+  it('should create a folder inside a shared mailbox parent (email alias)', async () => {
+    getFolderIdByName
+      .mockResolvedValueOnce(null) // no existing folder
+      .mockResolvedValueOnce('parent-id'); // parent resolved in shared mailbox
+    callGraphAPI.mockResolvedValue({ id: 'child-id' });
+
+    await handleCreateFolder({
+      name: 'Acme',
+      parentFolder: 'Lieferanten',
+      email: 'shared@company.com',
+    });
+
+    expect(getFolderIdByName).toHaveBeenNthCalledWith(
+      2,
+      mockAccessToken,
+      'Lieferanten',
+      'shared@company.com'
+    );
+    expect(callGraphAPI).toHaveBeenCalledWith(
+      mockAccessToken,
+      'POST',
+      'users/shared@company.com/mailFolders/parent-id/childFolders',
+      { displayName: 'Acme' }
+    );
+  });
+
+  it('should default folder creation to the signed-in mailbox (me)', async () => {
+    getFolderIdByName.mockResolvedValueOnce(null);
+    callGraphAPI.mockResolvedValue({ id: 'new-id' });
+
+    await handleCreateFolder({ name: 'Personal' });
+
+    expect(getFolderIdByName).toHaveBeenCalledWith(
+      mockAccessToken,
+      'Personal',
+      null
+    );
+    expect(callGraphAPI).toHaveBeenCalledWith(
+      mockAccessToken,
+      'POST',
+      'me/mailFolders',
+      { displayName: 'Personal' }
+    );
+  });
+
   it('should require folder name', async () => {
     const result = await handleCreateFolder({});
 
