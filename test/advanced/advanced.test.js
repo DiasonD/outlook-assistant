@@ -376,6 +376,28 @@ describe('handleSetMessageFlag', () => {
     expect(result._meta.failed).toBe(1);
   });
 
+  it('should target a shared mailbox when sharedMailbox is provided', async () => {
+    callGraphAPI.mockResolvedValue({});
+
+    await handleSetMessageFlag({
+      messageId: 'msg-1',
+      sharedMailbox: 'shared@company.com',
+    });
+
+    expect(callGraphAPI.mock.calls[0][1]).toBe('PATCH');
+    expect(callGraphAPI.mock.calls[0][2]).toBe(
+      'users/shared@company.com/messages/msg-1'
+    );
+  });
+
+  it('should default to the signed-in mailbox (me) when no shared mailbox', async () => {
+    callGraphAPI.mockResolvedValue({});
+
+    await handleSetMessageFlag({ messageId: 'msg-1' });
+
+    expect(callGraphAPI.mock.calls[0][2]).toBe('me/messages/msg-1');
+  });
+
   it('should require message IDs', async () => {
     const result = await handleSetMessageFlag({});
 
@@ -400,6 +422,20 @@ describe('handleClearMessageFlag', () => {
 
     expect(result.content[0].text).toContain('1 message(s) cleared');
     expect(result._meta.action).toBe('cleared');
+  });
+
+  it('should target a shared mailbox when email alias is provided', async () => {
+    callGraphAPI.mockResolvedValue({});
+
+    await handleClearMessageFlag({
+      messageId: 'msg-1',
+      email: 'shared@company.com',
+    });
+
+    expect(callGraphAPI.mock.calls[0][1]).toBe('PATCH');
+    expect(callGraphAPI.mock.calls[0][2]).toBe(
+      'users/shared@company.com/messages/msg-1'
+    );
   });
 
   it('should mark messages as complete', async () => {

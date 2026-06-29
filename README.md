@@ -104,7 +104,7 @@ Outlook Assistant works with both personal and work/school Microsoft accounts, b
 | Categories | Full support | Full support |
 | Mailbox settings | Full support | Full support |
 | Focused Inbox | API works (overrides stored) but mail routing not affected | Full support |
-| Shared mailboxes | Not available | Requires `Mail.Read.Shared` |
+| Shared mailboxes | Not available | Read: `Mail.Read.Shared`; write (move/categorize/flag): `Mail.ReadWrite.Shared` |
 | Meeting room search | Not available | Requires `Place.Read.All` + admin consent |
 
 > **Note**: On personal accounts, Microsoft's `$search` API has limited support for free-text queries. Outlook Assistant handles this automatically with progressive search — if your query returns no results, it falls back through OData filters, boolean filters, and recent message listing to find your emails. For the most direct results on personal accounts, use the structured filter parameters (`from`, `subject`, `to`, `receivedAfter`).
@@ -305,7 +305,8 @@ npm install
    - `MailboxSettings.ReadWrite` — settings, auto-replies, categories
    - `People.Read` — people search
 3. Optionally add **org-only** permissions (work/school accounts only):
-   - `Mail.Read.Shared` — shared mailbox access
+   - `Mail.Read.Shared` — shared mailbox read access
+   - `Mail.ReadWrite.Shared` — shared mailbox writes (move/categorize/flag/mark-read)
    - `Place.Read.All` — meeting room search (requires admin consent)
 4. Click **Add permissions**
 
@@ -508,7 +509,7 @@ Full documentation: [docs/](docs/README.md)
 
 - **Personal account search**: Free-text `query` and `kqlQuery` rely on Microsoft's `$search` API, which has limited support on personal Outlook.com accounts. Outlook Assistant mitigates this with progressive search fallback (trying OData filters automatically), but for the most direct results, use structured filters (`from`, `subject`, `to`, `receivedAfter`).
 - **Focused Inbox**: Only available on work/school Microsoft 365 accounts.
-- **Shared mailboxes**: Require `Mail.Read.Shared` permission and a work/school account. Custom subfolders are supported — pass `folder` as a display name or nested path (e.g. `Inbox/Vendors/Acme`), a raw `folderId`, or use `listFolders: true` (or `folders action=list, sharedMailbox: …`) to discover them.
+- **Shared mailboxes**: Require a work/school account. Reading needs `Mail.Read.Shared`; writing (move/categorize/flag/mark-read via `sharedMailbox`) needs `Mail.ReadWrite.Shared` — add it in Azure and re-authenticate. Custom subfolders are supported — pass `folder` as a display name or nested path (e.g. `Inbox/Vendors/Acme`), a raw `folderId`, or use `listFolders: true` (or `folders action=list, sharedMailbox: …`) to discover them.
 - **Meeting room search**: Requires `Place.Read.All` permission with admin consent (work/school accounts only).
 - **Export default path**: Exports save to the system temp directory by default. Use `savePath` or `outputDir` to specify a different location.
 

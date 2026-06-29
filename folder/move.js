@@ -3,7 +3,10 @@
  */
 const { callGraphAPI } = require('../utils/graph-api');
 const { ensureAuthenticated } = require('../auth');
-const { getFolderIdByName } = require('../email/folder-utils');
+const {
+  getFolderIdByName,
+  buildMailboxPrefix,
+} = require('../email/folder-utils');
 
 /**
  * Move emails handler
@@ -14,6 +17,7 @@ async function handleMoveEmails(args) {
   const emailIds = args.emailIds || '';
   const targetFolder = args.targetFolder || '';
   const sourceFolder = args.sourceFolder || '';
+  const sharedMailbox = args.sharedMailbox || args.email || null;
 
   if (!emailIds) {
     return {
@@ -63,7 +67,8 @@ async function handleMoveEmails(args) {
       accessToken,
       ids,
       targetFolder,
-      sourceFolder
+      sourceFolder,
+      sharedMailbox
     );
 
     return {
@@ -109,13 +114,16 @@ async function moveEmailsToFolder(
   accessToken,
   emailIds,
   targetFolderName,
-  _sourceFolderName
+  _sourceFolderName,
+  mailbox = null
 ) {
   try {
-    // Get the target folder ID
+    // Resolve the target folder within the correct mailbox (shared or `me`)
+    const prefix = buildMailboxPrefix(mailbox);
     const targetFolderId = await getFolderIdByName(
       accessToken,
-      targetFolderName
+      targetFolderName,
+      mailbox
     );
     if (!targetFolderId) {
       return {
@@ -134,9 +142,14 @@ async function moveEmailsToFolder(
     for (const emailId of emailIds) {
       try {
         // Move the email
-        await callGraphAPI(accessToken, 'POST', `me/messages/${emailId}/move`, {
-          destinationId: targetFolderId,
-        });
+        await callGraphAPI(
+          accessToken,
+          'POST',
+          `${prefix}/messages/${emailId}/move`,
+          {
+            destinationId: targetFolderId,
+          }
+        );
 
         results.successful.push(emailId);
       } catch (error) {

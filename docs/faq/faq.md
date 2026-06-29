@@ -48,6 +48,8 @@ Shared/delegated mailbox tools reach **custom subfolders and localized folder na
 
 This requires the work/school **`Mail.Read.Shared`** permission and delegate access to the mailbox (admin-configured in Exchange). Earlier versions only resolved well-known folder names, so custom folders returned an `ErrorInvalidIdMalformed` error — that gap is closed.
 
+You can also **write** to a shared mailbox — move messages between its folders (`folders action=move, sharedMailbox: …`), apply categories (`apply-category`), and flag/mark-read (`update-email`) all accept `sharedMailbox` (alias `email`). Writes additionally need the **`Mail.ReadWrite.Shared`** permission; after adding it in Azure you must re-authenticate so the refreshed token carries the new scope. Without it, write operations fall back to your own mailbox and fail with `404 ErrorInvalidMailboxItemId`.
+
 ## What Microsoft Graph permissions does Outlook Assistant need, and why?
 
 Outlook Assistant uses delegated Microsoft Graph permissions — it accesses your mailbox on your behalf, never with elevated rights:
@@ -60,7 +62,7 @@ Outlook Assistant uses delegated Microsoft Graph permissions — it accesses you
 - **`MailboxSettings.ReadWrite`** — auto-replies, working hours, master categories, Focused Inbox overrides
 - **`People.Read`** — `search-people` relevance-ranked lookups
 
-Two permissions are work/school only and optional: **`Mail.Read.Shared`** for shared mailboxes and **`Place.Read.All`** (admin consent required) for meeting room search. You grant these once during initial sign-in; they're scoped to your account and revocable any time at <https://account.live.com/consent/manage> (personal) or in your tenant admin console (work/school).
+Three permissions are work/school only and optional: **`Mail.Read.Shared`** to read shared mailboxes, **`Mail.ReadWrite.Shared`** to write to them (move/categorize/flag/mark-read), and **`Place.Read.All`** (admin consent required) for meeting room search. You grant these once during initial sign-in; they're scoped to your account and revocable any time at <https://account.live.com/consent/manage> (personal) or in your tenant admin console (work/school). Requesting the `.Shared` scopes on a personal Microsoft account can trigger an `AADSTS` consent error — personal-account users who don't need shared mailboxes can ignore them, or set `OUTLOOK_AUTH_AUDIENCE=consumers`.
 
 ## Where are my tokens stored, and what happens when they expire?
 

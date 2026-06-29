@@ -385,7 +385,7 @@ const emailTools = [
   {
     name: 'update-email',
     description:
-      'Update message state without modifying content (idempotent — safe to retry). action=`mark-read`/`mark-unread` toggles the `isRead` flag on a single message by `id`. action=`flag` sets a follow-up flag with optional `dueDateTime`/`startDateTime` (ISO 8601). action=`unflag` clears the flag. action=`complete` marks the flag as done. Flag/unflag/complete accept either `id` (single) or `ids` (batch array) — batch operations use Graph `$batch` for efficiency. Returns status confirmation per message.',
+      'Update message state without modifying content (idempotent — safe to retry). action=`mark-read`/`mark-unread` toggles the `isRead` flag on a single message by `id`. action=`flag` sets a follow-up flag with optional `dueDateTime`/`startDateTime` (ISO 8601). action=`unflag` clears the flag. action=`complete` marks the flag as done. Flag/unflag/complete accept either `id` (single) or `ids` (batch array) — batch operations use Graph `$batch` for efficiency. Pass `sharedMailbox` (or alias `email`) to update messages in a shared/delegated mailbox instead of the signed-in account (requires Mail.ReadWrite.Shared + delegate access). Returns status confirmation per message.',
     annotations: {
       title: 'Update Email',
       readOnlyHint: false,
@@ -421,34 +421,51 @@ const emailTools = [
           type: 'string',
           description: 'Start date/time for follow-up, ISO 8601 (action=flag)',
         },
+        sharedMailbox: {
+          type: 'string',
+          description:
+            'Email address of a shared/delegated mailbox whose message(s) to update instead of the signed-in account. Requires delegate access + Mail.ReadWrite.Shared.',
+        },
+        email: {
+          type: 'string',
+          description: 'Alias for `sharedMailbox`.',
+        },
       },
       additionalProperties: false,
       required: ['action'],
     },
     handler: async (args) => {
+      const sharedMailbox = args.sharedMailbox || args.email || null;
       switch (args.action) {
         case 'mark-read':
-          return handleMarkAsRead({ id: args.id, isRead: true });
+          return handleMarkAsRead({ id: args.id, isRead: true, sharedMailbox });
         case 'mark-unread':
-          return handleMarkAsRead({ id: args.id, isRead: false });
+          return handleMarkAsRead({
+            id: args.id,
+            isRead: false,
+            sharedMailbox,
+          });
         case 'flag':
           return handleSetMessageFlag({
             messageId: args.id,
             messageIds: args.ids,
             dueDateTime: args.dueDateTime,
             startDateTime: args.startDateTime,
+            sharedMailbox,
           });
         case 'unflag':
           return handleClearMessageFlag({
             messageId: args.id,
             messageIds: args.ids,
             markComplete: false,
+            sharedMailbox,
           });
         case 'complete':
           return handleClearMessageFlag({
             messageId: args.id,
             messageIds: args.ids,
             markComplete: true,
+            sharedMailbox,
           });
         default:
           return {

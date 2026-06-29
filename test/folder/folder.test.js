@@ -6,7 +6,10 @@ const {
 } = require('../../folder');
 const { callGraphAPI } = require('../../utils/graph-api');
 const { ensureAuthenticated } = require('../../auth');
-const { getFolderIdByName } = require('../../email/folder-utils');
+const {
+  getFolderIdByName,
+  buildMailboxPrefix,
+} = require('../../email/folder-utils');
 
 jest.mock('../../utils/graph-api');
 jest.mock('../../auth');
@@ -37,6 +40,13 @@ beforeEach(() => {
   jest.resetAllMocks();
   jest.spyOn(console, 'error').mockImplementation();
   ensureAuthenticated.mockResolvedValue(mockAccessToken);
+  // folder-utils is fully mocked; restore the real prefix logic so the move
+  // handler builds correct `me` / `users/{email}` paths.
+  buildMailboxPrefix.mockImplementation((mailbox) => {
+    if (!mailbox) return 'me';
+    if (mailbox === 'me' || mailbox.startsWith('users/')) return mailbox;
+    return `users/${mailbox}`;
+  });
 });
 
 afterEach(() => {
@@ -222,6 +232,51 @@ describe('handleMoveEmails', () => {
 
     expect(result.content[0].text).toContain('Successfully moved 2 email(s)');
     expect(result.content[0].text).toContain('Archive');
+  });
+
+  it('should resolve the folder and move within a shared mailbox', async () => {
+    getFolderIdByName.mockResolvedValue('shared-folder-id');
+    callGraphAPI.mockResolvedValue({});
+
+    const result = await handleMoveEmails({
+      emailIds: 'msg-1',
+      targetFolder: 'Vendors/Acme',
+      sharedMailbox: 'shared@company.com',
+    });
+
+    expect(result.content[0].text).toContain('Successfully moved 1 email(s)');
+    // Folder lookup must be scoped to the shared mailbox
+    expect(getFolderIdByName).toHaveBeenCalledWith(
+      mockAccessToken,
+      'Vendors/Acme',
+      'shared@company.com'
+    );
+    // Move POST must target the shared mailbox
+    expect(callGraphAPI).toHaveBeenCalledWith(
+      mockAccessToken,
+      'POST',
+      'users/shared@company.com/messages/msg-1/move',
+      { destinationId: 'shared-folder-id' }
+    );
+  });
+
+  it('should default the move to the signed-in mailbox (me)', async () => {
+    getFolderIdByName.mockResolvedValue('target-folder-id');
+    callGraphAPI.mockResolvedValue({});
+
+    await handleMoveEmails({ emailIds: 'msg-1', targetFolder: 'Archive' });
+
+    expect(getFolderIdByName).toHaveBeenCalledWith(
+      mockAccessToken,
+      'Archive',
+      null
+    );
+    expect(callGraphAPI).toHaveBeenCalledWith(
+      mockAccessToken,
+      'POST',
+      'me/messages/msg-1/move',
+      { destinationId: 'target-folder-id' }
+    );
   });
 
   it('should handle target folder not found', async () => {

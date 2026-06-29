@@ -57,7 +57,6 @@ if (
   !VALID_AUDIENCE_LITERALS.has(AUTH_AUDIENCE) &&
   !TENANT_GUID_RE.test(AUTH_AUDIENCE)
 ) {
-  // eslint-disable-next-line no-console
   console.warn(
     `[outlook-assistant] OUTLOOK_AUTH_AUDIENCE="${AUTH_AUDIENCE}" is not a recognised value. ` +
       `Expected one of: common, consumers, organizations, or a tenant GUID. ` +
@@ -90,8 +89,15 @@ module.exports = {
       'Contacts.ReadWrite',
       'People.Read',
       'MailboxSettings.ReadWrite',
+      // Shared/delegated mailbox access (work/school accounts only). Required to
+      // read AND write a shared mailbox via /users/{email}/...; without these
+      // every write (move/category/flag/mark-read) falls back to `me` and fails
+      // with ErrorInvalidMailboxItemId. Note: requesting `.Shared` scopes for a
+      // personal Microsoft account can trigger an AADSTS consent error — personal
+      // accounts should remove these (or set OUTLOOK_AUTH_AUDIENCE=consumers).
+      'Mail.Read.Shared', // access-shared-mailbox (read)
+      'Mail.ReadWrite.Shared', // shared-mailbox writes (move/category/flag/mark-read)
       // Org-dependent scopes (work/school accounts only):
-      // 'Mail.Read.Shared',   // access-shared-mailbox tool
       // 'Place.Read.All',     // find-meeting-rooms tool
     ],
     tokenStorePath: path.join(homeDir, '.outlook-assistant-tokens.json'),

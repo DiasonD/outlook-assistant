@@ -43,13 +43,14 @@ params:
 
 ## Required Permissions
 
-Your Azure app registration needs the `Mail.Read.Shared` permission:
+Your Azure app registration needs the `Mail.Read.Shared` permission to **read** a shared mailbox, and `Mail.ReadWrite.Shared` to **write** to it (move messages between folders, apply categories, flag, mark read):
 
 1. Go to [Azure Portal → App registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) → your Outlook Assistant app
-2. Under **API permissions**, add Microsoft Graph delegated permission: `Mail.Read.Shared`
+2. Under **API permissions**, add the Microsoft Graph delegated permissions: `Mail.Read.Shared` (read) and `Mail.ReadWrite.Shared` (write)
 3. Grant admin consent if required by your organisation
+4. **Re-authenticate** (`auth` tool, `action=authenticate`) so the refreshed token carries the new scopes — existing tokens won't have them
 
-Your Microsoft account must also have been granted access to the shared mailbox by your Exchange administrator.
+Your Microsoft account must also have been granted access (Full Access / delegate) to the shared mailbox by your Exchange administrator.
 
 ## Parameter Reference
 
@@ -64,13 +65,14 @@ Your Microsoft account must also have been granted access to the shared mailbox 
 
 | Problem | Cause | Fix |
 |---------|-------|-----|
-| "Access denied" or 403 error | Missing `Mail.Read.Shared` permission | Add the permission in Azure Portal |
+| "Access denied" or 403 error | Missing `Mail.Read.Shared` (read) / `Mail.ReadWrite.Shared` (write) permission | Add the permission in Azure Portal, then re-authenticate |
 | "Mailbox not found" | Incorrect email address or no access granted | Verify the address and check with your Exchange admin |
 | Empty results | Mailbox is empty or folder doesn't exist | Try `folder: "inbox"` to confirm access |
+| `404 ErrorInvalidMailboxItemId` or "folder not found" on a move/categorize/flag | Write addressed your own mailbox, or token lacks `Mail.ReadWrite.Shared` | Pass `sharedMailbox` on the write tool, add the scope in Azure, and re-authenticate |
 
 ## Tips
 
-- This tool is read-only — you can't send from a shared mailbox through Outlook Assistant
+- `access-shared-mailbox` itself is read-only, and you can't *send* from a shared mailbox through Outlook Assistant — but you can organise one: `folders action=move`, `apply-category`, and `update-email` (flag/mark-read) all accept `sharedMailbox` (alias `email`) with `Mail.ReadWrite.Shared`
 - Use `outputVerbosity: "minimal"` for quick checks on high-volume shared inboxes
 - Auto-approved by MCP clients that support annotations (read-only tool)
 

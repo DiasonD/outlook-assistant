@@ -12,7 +12,11 @@ const { callGraphAPI } = require('../utils/graph-api');
 const { ensureAuthenticated } = require('../auth');
 const { FIELD_PRESETS } = require('../utils/field-presets');
 const { DEFAULT_TIMEZONE } = require('../config');
-const { resolveFolderRef, getAllFolders } = require('../email/folder-utils');
+const {
+  resolveFolderRef,
+  getAllFolders,
+  buildMailboxPrefix,
+} = require('../email/folder-utils');
 
 /**
  * Format an email for display (simplified)
@@ -352,6 +356,7 @@ async function handleSetMessageFlag(args) {
     startDateTime,
     reminderDateTime: _reminderDateTime,
   } = args;
+  const prefix = buildMailboxPrefix(args.sharedMailbox || args.email || null);
 
   // Support single ID or array
   const ids = messageIds || (messageId ? [messageId] : []);
@@ -411,7 +416,7 @@ async function handleSetMessageFlag(args) {
 
     for (const id of ids) {
       try {
-        await callGraphAPI(accessToken, 'PATCH', `me/messages/${id}`, {
+        await callGraphAPI(accessToken, 'PATCH', `${prefix}/messages/${id}`, {
           flag,
         });
         results.push({ id, success: true });
@@ -481,6 +486,7 @@ async function handleSetMessageFlag(args) {
  */
 async function handleClearMessageFlag(args) {
   const { messageId, messageIds, markComplete } = args;
+  const prefix = buildMailboxPrefix(args.sharedMailbox || args.email || null);
 
   // Support single ID or array
   const ids = messageIds || (messageId ? [messageId] : []);
@@ -518,7 +524,7 @@ async function handleClearMessageFlag(args) {
 
     for (const id of ids) {
       try {
-        await callGraphAPI(accessToken, 'PATCH', `me/messages/${id}`, {
+        await callGraphAPI(accessToken, 'PATCH', `${prefix}/messages/${id}`, {
           flag,
         });
         results.push({ id, success: true });
