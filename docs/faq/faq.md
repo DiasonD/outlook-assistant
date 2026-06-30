@@ -40,13 +40,15 @@ On personal accounts, Microsoft's `$search` API has limited support for free-tex
 
 ## How do I access custom subfolders of a shared mailbox?
 
-Shared/delegated mailbox tools reach **custom subfolders and localized folder names**, not just Microsoft's well-known folders (Inbox, Sent, Archive, etc.). Three entry points:
+Shared/delegated mailbox tools reach **custom subfolders and localized folder names**, not just Microsoft's well-known folders (Inbox, Sent, Archive, etc.). Four entry points:
 
 1. **Discover the folder tree.** Call `access-shared-mailbox` with `listFolders: true` (or `folders action=list, sharedMailbox: "shared@company.com"`) to enumerate every folder with its name, full path, ID, and item counts.
 2. **Read a custom folder.** Pass `folder` as a display name (`Archiv`), a nested path (`Inbox/Vendors/Acme`), or a raw `folderId` to `access-shared-mailbox`. Localized and case-insensitive names resolve correctly.
 3. **Search within a custom folder.** `search-emails` accepts `sharedMailbox` (alias `email`) alongside `folder` (name or path) or `searchAllFolders: true`.
 
 This requires the work/school **`Mail.Read.Shared`** permission and delegate access to the mailbox (admin-configured in Exchange). Earlier versions only resolved well-known folder names, so custom folders returned an `ErrorInvalidIdMalformed` error — that gap is closed.
+
+4. **Open an individual message.** Message IDs are *mailbox-scoped*, so once you have an ID from `access-shared-mailbox` or `search-emails`, pass the **same** `sharedMailbox` (alias `email`) to `read-email` (full body or `headersMode` forensic headers), `attachments` (list/view/download), and `export` (`message`, `messages`, `conversation`, or `mime`) to open it. Conversation retrieval (`search-emails` with `conversationId` or `groupByConversation`) is mailbox-aware too. Omitting it makes the tool look the ID up in *your* mailbox, where it doesn't exist — the source of the `404 ErrorInvalidMailboxItemId` error.
 
 You can also **write** to a shared mailbox — move messages between its folders (`folders action=move, sharedMailbox: …`), create folders (`folders action=create`), apply categories (`apply-category`), and flag/mark-read (`update-email`) all accept `sharedMailbox` (alias `email`). Writes additionally need the **`Mail.ReadWrite.Shared`** permission; after adding it in Azure you must re-authenticate so the refreshed token carries the new scope. Without it, write operations fall back to your own mailbox and fail with `404 ErrorInvalidMailboxItemId`.
 

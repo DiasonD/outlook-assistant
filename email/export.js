@@ -15,6 +15,7 @@ const {
   VERBOSITY,
 } = require('../utils/response-formatter');
 const { getEmailFields } = require('../utils/field-presets');
+const { buildMailboxPrefix, resolveFolderPath } = require('./folder-utils');
 
 // Export format constants
 const EXPORT_FORMATS = {
@@ -42,6 +43,9 @@ async function handleExportEmail(args) {
   // hardcoded os.tmpdir(), inconsistent with target=messages.
   const savePath = args.outputDir || args.savePath;
   const includeAttachments = args.includeAttachments !== false;
+  // Message IDs are mailbox-scoped: route to /users/{mailbox} for a shared/
+  // delegated mailbox, else /me.
+  const prefix = buildMailboxPrefix(args.sharedMailbox || args.email || null);
 
   if (!emailId) {
     return {
@@ -62,7 +66,7 @@ async function handleExportEmail(args) {
     const email = await callGraphAPI(
       accessToken,
       'GET',
-      `me/messages/${emailId}`,
+      `${prefix}/messages/${emailId}`,
       null,
       { $select: selectFields }
     );
@@ -106,7 +110,7 @@ async function handleExportEmail(args) {
 
     if (format === EXPORT_FORMATS.MIME || format === EXPORT_FORMATS.EML) {
       // MIME export - raw RFC822 format
-      content = await callGraphAPIRaw(accessToken, emailId);
+      content = await callGraphAPIRaw(accessToken, emailId, prefix);
     } else if (format === EXPORT_FORMATS.MARKDOWN) {
       // Markdown export using existing formatter
       content = formatEmailContent(email, VERBOSITY.FULL, {
@@ -152,7 +156,8 @@ async function handleExportEmail(args) {
       attachmentsSaved = await saveAttachments(
         accessToken,
         emailId,
-        path.dirname(finalPath)
+        path.dirname(finalPath),
+        prefix
       );
     }
 
@@ -234,6 +239,10 @@ async function handleBatchExportEmails(args) {
   const format = (args.format || EXPORT_FORMATS.MARKDOWN).toLowerCase();
   const outputDir = args.outputDir;
   const includeAttachments = args.includeAttachments === true; // Default false for batch
+  // Scope the whole batch (search + per-message fetch + attachments) to a
+  // shared/delegated mailbox when supplied.
+  const mailbox = args.sharedMailbox || args.email || null;
+  const prefix = buildMailboxPrefix(mailbox);
 
   if (!outputDir) {
     return {
@@ -259,7 +268,8 @@ async function handleBatchExportEmails(args) {
     if (Object.keys(searchQuery).length > 0 && emailIds.length === 0) {
       const searchResults = await searchEmailsForExport(
         accessToken,
-        searchQuery
+        searchQuery,
+        mailbox
       );
       idsToExport = searchResults.map((e) => e.id);
     }
@@ -293,7 +303,7 @@ async function handleBatchExportEmails(args) {
           const email = await callGraphAPI(
             accessToken,
             'GET',
-            `me/messages/${emailId}`,
+            `${prefix}/messages/${emailId}`,
             null,
             { $select: selectFields }
           );
@@ -349,7 +359,8 @@ async function handleBatchExportEmails(args) {
       format,
       outputDir,
       includeAttachments,
-      4 // Max concurrent
+      4, // Max concurrent
+      prefix
     );
 
     // Build response
@@ -423,8 +434,11 @@ async function handleBatchExportEmails(args) {
 
 /**
  * Search emails for batch export
+ * @param {string} accessToken
+ * @param {object} query
+ * @param {string|null} [mailbox] - Shared mailbox email, or null for the signed-in user
  */
-async function searchEmailsForExport(accessToken, query) {
+async function searchEmailsForExport(accessToken, query, mailbox = null) {
   const folder = query.folder || 'inbox';
   const maxResults = Math.min(query.maxResults || 25, 100);
 
@@ -464,10 +478,13 @@ async function searchEmailsForExport(accessToken, query) {
     delete params.$orderby; // Can't combine $search with $orderby
   }
 
+  // resolveFolderPath handles well-known names, custom/localized names, nested
+  // paths, and raw IDs, scoped to the signed-in user or the shared mailbox.
+  const endpoint = await resolveFolderPath(accessToken, folder, mailbox);
   const response = await callGraphAPI(
     accessToken,
     'GET',
-    `me/mailFolders/${folder}/messages`,
+    endpoint,
     null,
     params
   );
@@ -484,7 +501,8 @@ async function exportWithConcurrency(
   format,
   outputDir,
   includeAttachments,
-  maxConcurrent
+  maxConcurrent,
+  prefix = 'me'
 ) {
   const results = [];
   const inProgress = new Set();
@@ -499,7 +517,8 @@ async function exportWithConcurrency(
         emailId,
         format,
         outputDir,
-        includeAttachments
+        includeAttachments,
+        prefix
       ).then((result) => {
         inProgress.delete(promise);
         results.push(result);
@@ -526,14 +545,15 @@ async function exportSingleForBatch(
   emailId,
   format,
   outputDir,
-  includeAttachments
+  includeAttachments,
+  prefix = 'me'
 ) {
   try {
     const selectFields = getEmailFields('export');
     const email = await callGraphAPI(
       accessToken,
       'GET',
-      `me/messages/${emailId}`,
+      `${prefix}/messages/${emailId}`,
       null,
       { $select: selectFields }
     );
@@ -548,7 +568,7 @@ async function exportSingleForBatch(
 
     let content;
     if (format === EXPORT_FORMATS.MIME || format === EXPORT_FORMATS.EML) {
-      content = await callGraphAPIRaw(accessToken, emailId);
+      content = await callGraphAPIRaw(accessToken, emailId, prefix);
     } else if (format === EXPORT_FORMATS.MARKDOWN) {
       content = formatEmailContent(email, VERBOSITY.FULL, {
         includeHeaders: true,
@@ -562,7 +582,12 @@ async function exportSingleForBatch(
     // Handle attachments if requested
     let attachmentCount = 0;
     if (includeAttachments && email.hasAttachments) {
-      const saved = await saveAttachments(accessToken, emailId, outputDir);
+      const saved = await saveAttachments(
+        accessToken,
+        emailId,
+        outputDir,
+        prefix
+      );
       attachmentCount = saved.length;
     }
 
@@ -584,15 +609,19 @@ async function exportSingleForBatch(
 
 /**
  * Save email attachments to directory
+ * @param {string} accessToken
+ * @param {string} emailId
+ * @param {string} outputDir
+ * @param {string} [prefix] - Mailbox resource prefix (`me` or `users/{email}`)
  */
-async function saveAttachments(accessToken, emailId, outputDir) {
+async function saveAttachments(accessToken, emailId, outputDir, prefix = 'me') {
   const saved = [];
 
   try {
     const response = await callGraphAPI(
       accessToken,
       'GET',
-      `me/messages/${emailId}/attachments`,
+      `${prefix}/messages/${emailId}/attachments`,
       null,
       { $select: 'id,name,contentBytes,size,contentType' }
     );

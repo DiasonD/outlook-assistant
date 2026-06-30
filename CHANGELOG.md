@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.8.2] - 2026-06
+
+Shared/delegated mailbox release. Closes the long-standing gap where the
+shared-mailbox tools could only reach a handful of well-known folders and
+could not open, read, write, or export individual shared-mailbox items.
+Every Graph path that takes a message ID, conversation ID, or folder is now
+mailbox-aware via a single `sharedMailbox` (alias `email`) parameter routed
+through `buildMailboxPrefix` (`me` → `users/{email}`). No new tools, no
+breaking changes — purely additive parameters plus one new optional scope.
+
 ### Added
 
 - **Shared-mailbox custom subfolder access** — the shared-mailbox tools can now
@@ -27,6 +37,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Folder name → ID resolution (`email/folder-utils.js`) is now mailbox-aware
     and recurses into subfolders, so a bare custom subfolder name resolves even
     when nested under Inbox.
+- **Shared-mailbox write operations** — `folders` (action `move`), `folders`
+  (action `create`), `apply-category`, and `update-email` (flag/unflag/complete/
+  mark-read/mark-unread) accept `sharedMailbox` (alias `email`) to act on a
+  shared/delegated mailbox instead of the signed-in account. Folder creation
+  routes the duplicate-name check and parent-folder lookup through the shared
+  mailbox; moves resolve the destination folder within it.
+  - Adds the **`Mail.ReadWrite.Shared`** delegated scope (alongside the existing
+    `Mail.Read.Shared`) in `config.js`, with a personal-account caveat note.
+    Re-authenticate after granting it so the refreshed token carries the scope.
+- **Shared-mailbox item read/export** — item-scoped readers now accept
+  `sharedMailbox` (alias `email`) so an ID obtained from a shared mailbox can
+  actually be opened. Covers `read-email` (body and `headersMode` forensic
+  headers), `attachments` (list/view/download), `search-emails` conversation
+  modes (`conversationId`, `groupByConversation`), and every `export` target
+  (`message`, `messages` batch, `conversation`, `mime`). Batch export search
+  (`searchQuery`) also resolves custom shared-mailbox folders.
+
+### Fixed
+
+- **`404 ErrorInvalidMailboxItemId` on shared-mailbox reads** — message IDs are
+  mailbox-scoped, but the item-scoped readers and exporters hard-coded the
+  `me/messages/...` prefix. An ID surfaced by `search-emails`/`access-shared-mailbox`
+  against a shared mailbox therefore 404'd when passed to `read-email`,
+  `attachments`, conversation retrieval, or `export`. All now route to
+  `users/{mailbox}/messages/...` when `sharedMailbox` is supplied. The raw-MIME
+  helper (`callGraphAPIRaw`) gained an optional mailbox-prefix argument so EML/
+  MBOX/MIME exports follow suit.
+- **Shared-mailbox writes silently landing in the wrong mailbox** — move,
+  categorize, flag, and mark-read write handlers, and folder creation, ignored
+  the shared-mailbox flag and targeted the signed-in user, failing with
+  "folder not found" / `404 ErrorInvalidMailboxItemId`. They now honour
+  `sharedMailbox`/`email`.
 
 ## [3.8.1] - 2026-05
 

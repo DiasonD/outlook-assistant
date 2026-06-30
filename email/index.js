@@ -56,12 +56,12 @@ const emailTools = [
         conversationId: {
           type: 'string',
           description:
-            'Get all messages in a conversation thread by conversationId.',
+            'Get all messages in a conversation thread by conversationId. Honors `sharedMailbox`/`email` to thread within a shared/delegated mailbox.',
         },
         groupByConversation: {
           type: 'boolean',
           description:
-            'List conversations (threads) grouped by conversationId instead of individual emails.',
+            'List conversations (threads) grouped by conversationId instead of individual emails. Honors `sharedMailbox`/`email` (and custom `folder` paths) to group within a shared/delegated mailbox.',
         },
         // Search/list params
         query: {
@@ -189,7 +189,7 @@ const emailTools = [
   {
     name: 'read-email',
     description:
-      'Read a single email by id (read-only). Default: returns the full message body (HTML stripped to text by default), subject, from/to/cc, receivedDateTime, conversationId, attachments metadata, and webLink as Markdown. With `headersMode: true`: returns RFC-822 forensic headers instead (DKIM, SPF, DMARC, Received chain, Message-ID, Authentication-Results) — pair with `importantOnly: true` for the security-relevant subset, `groupByType: true` for category-bucketed view, or `raw: true` for JSON instead of Markdown. With `includeHeaders: true` (non-headers-mode): adds basic headers alongside body. Use `outputVerbosity` (minimal/standard/full) to control field count.',
+      'Read a single email by id (read-only). Default: returns the full message body (HTML stripped to text by default), subject, from/to/cc, receivedDateTime, conversationId, attachments metadata, and webLink as Markdown. With `headersMode: true`: returns RFC-822 forensic headers instead (DKIM, SPF, DMARC, Received chain, Message-ID, Authentication-Results) — pair with `importantOnly: true` for the security-relevant subset, `groupByType: true` for category-bucketed view, or `raw: true` for JSON instead of Markdown. With `includeHeaders: true` (non-headers-mode): adds basic headers alongside body. Use `outputVerbosity` (minimal/standard/full) to control field count. **If the id came from a shared/delegated mailbox (e.g. via `search-emails` or `access-shared-mailbox` with `sharedMailbox` set), you MUST pass the same `sharedMailbox` (or alias `email`) here** — message IDs are mailbox-scoped, and reading a shared-mailbox id without it fails with 404 ErrorInvalidMailboxItemId.',
     annotations: {
       title: 'Read Email',
       readOnlyHint: true,
@@ -201,6 +201,15 @@ const emailTools = [
         id: {
           type: 'string',
           description: 'ID of the email to read',
+        },
+        sharedMailbox: {
+          type: 'string',
+          description:
+            'Email address of the shared/delegated mailbox the id belongs to. Required when the id was obtained from a shared mailbox — message IDs are mailbox-scoped and reading without it returns 404 ErrorInvalidMailboxItemId. Requires delegate access + Mail.Read.Shared.',
+        },
+        email: {
+          type: 'string',
+          description: 'Alias for `sharedMailbox`.',
         },
         headersMode: {
           type: 'boolean',
@@ -482,7 +491,7 @@ const emailTools = [
   {
     name: 'attachments',
     description:
-      'Inspect or retrieve email attachments. action=`list` (default) returns metadata for all attachments on `messageId` (id, name, contentType, size, isInline) — read-only. action=`view` returns inline content for text/JSON/XML attachments via `attachmentId`; binary types require download. action=`download` saves the attachment to disk at `outputDir` (default system tmpdir, auto-created) and returns the saved file path. `messageId` is required for all actions; `attachmentId` is required for view/download. Use `outputVerbosity` to control list field count.',
+      'Inspect or retrieve email attachments. action=`list` (default) returns metadata for all attachments on `messageId` (id, name, contentType, size, isInline) — read-only. action=`view` returns inline content for text/JSON/XML attachments via `attachmentId`; binary types require download. action=`download` saves the attachment to disk at `outputDir` (default system tmpdir, auto-created) and returns the saved file path. `messageId` is required for all actions; `attachmentId` is required for view/download. If `messageId` came from a shared/delegated mailbox, pass the same `sharedMailbox` (or alias `email`) — attachment IDs are scoped to the message and fail under /me otherwise. Use `outputVerbosity` to control list field count.',
     annotations: {
       title: 'Attachments',
       readOnlyHint: false,
@@ -504,6 +513,15 @@ const emailTools = [
         attachmentId: {
           type: 'string',
           description: 'Attachment ID (action=view/download, required)',
+        },
+        sharedMailbox: {
+          type: 'string',
+          description:
+            'Email address of the shared/delegated mailbox the messageId belongs to. Required when the message came from a shared mailbox. Requires delegate access + Mail.Read.Shared.',
+        },
+        email: {
+          type: 'string',
+          description: 'Alias for `sharedMailbox`.',
         },
         outputDir: {
           type: 'string',
@@ -543,7 +561,7 @@ const emailTools = [
   {
     name: 'export',
     description:
-      'Export emails to file formats for archival, forensics, or programmatic processing. target=`message` (default) exports a single email by `id` to `savePath` — accepts `mime`/`eml`/`markdown`/`json`/`csv`. target=`messages` batch-exports either an explicit `emailIds` array or messages matching `searchQuery` (or `query` shortcut) into `outputDir` — accepts `markdown`/`json`/`csv`. target=`conversation` exports a full thread by `conversationId` into `outputDir` (chronological by default; pass `order: "reverse"` for newest-first) — accepts `eml`/`mbox`/`markdown`/`json`/`html`/`csv`. target=`mime` returns raw RFC-822 MIME bytes for `id` (use `headersOnly` for just headers, `base64` for encoded transport, `maxSize` to cap at default 1MB). `includeAttachments` defaults to true for single-message exports and false for batch. Format support varies by target — see the format param enum.',
+      'Export emails to file formats for archival, forensics, or programmatic processing. target=`message` (default) exports a single email by `id` to `savePath` — accepts `mime`/`eml`/`markdown`/`json`/`csv`. target=`messages` batch-exports either an explicit `emailIds` array or messages matching `searchQuery` (or `query` shortcut) into `outputDir` — accepts `markdown`/`json`/`csv`. target=`conversation` exports a full thread by `conversationId` into `outputDir` (chronological by default; pass `order: "reverse"` for newest-first) — accepts `eml`/`mbox`/`markdown`/`json`/`html`/`csv`. target=`mime` returns raw RFC-822 MIME bytes for `id` (use `headersOnly` for just headers, `base64` for encoded transport, `maxSize` to cap at default 1MB). All targets accept `sharedMailbox` (alias `email`) to export from a shared/delegated mailbox instead of the signed-in account — pass it whenever the id(s)/conversationId/searchQuery come from a shared mailbox, or exports fail with 404 ErrorInvalidMailboxItemId. `includeAttachments` defaults to true for single-message exports and false for batch. Format support varies by target — see the format param enum.',
     annotations: {
       title: 'Export Emails',
       readOnlyHint: false,
@@ -617,6 +635,15 @@ const emailTools = [
           enum: ['chronological', 'reverse'],
           description:
             'Message order (target=conversation, default: chronological)',
+        },
+        sharedMailbox: {
+          type: 'string',
+          description:
+            'Email address of a shared/delegated mailbox to export from instead of the signed-in account. Applies to all targets (message/messages/conversation/mime) — pass it whenever the id(s)/conversationId/searchQuery belong to a shared mailbox. Requires delegate access + Mail.Read.Shared.',
+        },
+        email: {
+          type: 'string',
+          description: 'Alias for `sharedMailbox`.',
         },
         // MIME params
         headersOnly: {
