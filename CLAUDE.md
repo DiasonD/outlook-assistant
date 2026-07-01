@@ -30,7 +30,9 @@ npx kill-port 3333       # Kill auth server if port blocked
 **Browser flow (alternative, for localhost only):**
 Start the auth server with `npm run auth-server` — needs `OUTLOOK_CLIENT_ID`/`OUTLOOK_CLIENT_SECRET` as env vars. The MCP server itself reads credentials from `.mcp.json` inline `kc_get` calls. Full walkthrough: [`docs/how-to/getting-started/connect-outlook-to-claude.md`](docs/how-to/getting-started/connect-outlook-to-claude.md).
 
-**Token refresh**: Tokens auto-refresh when expired (via `token-storage.js`). Re-authentication only needed when the refresh token expires (~90 days).
+**Token refresh**: Tokens auto-refresh when expired (via `token-storage.js`). Re-authentication only needed when the refresh token expires (~90 days). Refresh re-requests only the **granted** scopes (persisted as `granted_scopes`), not the full configured set.
+
+**Scope fallback (v3.8.2+)**: Auth attempts the full scope set (`BASE_SCOPES` + `SHARED_SCOPES`, defined in `config.js`). Personal Microsoft accounts can't consent to the `.Shared` scopes, so `handleDeviceCodeComplete` (`auth/tools.js`) detects the rejection via `isScopeConsentError` (`auth/device-code.js`) and automatically re-issues a device code with `AUTH_CONFIG.fallbackScopes` (base only) — one extra code for personal accounts; work/school accounts consent on the first try. The browser flow (`auth/oauth-server.js`) mirrors this via a one-shot `/auth?fallback=1` redirect. No `OUTLOOK_AUTH_AUDIENCE` change needed.
 
 ## Architecture
 

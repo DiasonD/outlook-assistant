@@ -122,11 +122,22 @@ async function pollForToken(clientId, deviceCode, interval, expiresIn) {
         throw new Error(
           'Device code expired. Please restart the authentication process.'
         );
-      default:
-        throw new Error(
+      default: {
+        // Attach the raw OAuth payload so callers (e.g. handleDeviceCodeComplete)
+        // can classify the failure — notably scope-consent rejections that should
+        // trigger a base-scopes fallback. Keep the existing message text.
+        const e = new Error(
           body.error_description ||
             `Token polling failed: ${body.error || `status ${statusCode}`}`
         );
+        e.oauth = {
+          error: body.error,
+          error_codes: body.error_codes,
+          suberror: body.suberror,
+          error_description: body.error_description,
+        };
+        throw e;
+      }
     }
   }
 
@@ -135,7 +146,56 @@ async function pollForToken(clientId, deviceCode, interval, expiresIn) {
   );
 }
 
+// AADSTS codes that indicate the signed-in account cannot consent to one or
+// more requested scopes (the `.Shared` scopes for a personal Microsoft account
+// is the case we care about). We match the FAMILY defensively because we cannot
+// test against a live personal account here:
+//   650053 — "The application '<app>' asked for scope '<x>' that doesn't exist
+//             on the resource" (commonly surfaced for unsupported scopes)
+//   65001  — user/admin has not consented to the application
+//   70011  — invalid scope value
+//   28000  — invalid request / unsupported scope (seen on some tenants)
+// CAVEAT: the EXACT code returned for the personal-account `.Shared` rejection
+// should be confirmed empirically against a real personal Microsoft account.
+// Until then we match the whole family + the OAuth `error` values defensively.
+const SCOPE_CONSENT_AADSTS_CODES = ['650053', '65001', '70011', '28000'];
+
+/**
+ * Predicate: does this error look like a scope-consent rejection that warrants
+ * falling back to base scopes? Matches defensively against the OAuth `error`
+ * value AND the AADSTS code family found in `err.oauth.error_codes` (array) or
+ * anywhere in `err.oauth.error_description` / `err.message` (string).
+ * @param {Error & {oauth?: object}} err
+ * @returns {boolean}
+ */
+function isScopeConsentError(err) {
+  if (!err) {
+    return false;
+  }
+  const oauth = err.oauth || {};
+
+  // OAuth-level error values that map to a scope/consent problem.
+  if (oauth.error === 'invalid_scope' || oauth.error === 'invalid_grant') {
+    return true;
+  }
+
+  // AADSTS codes can arrive as a numeric array (`error_codes`) ...
+  if (Array.isArray(oauth.error_codes)) {
+    const codes = oauth.error_codes.map(String);
+    if (codes.some((c) => SCOPE_CONSENT_AADSTS_CODES.includes(c))) {
+      return true;
+    }
+  }
+
+  // ... or embedded in free-text (error_description / message).
+  const haystack = `${oauth.error_description || ''} ${err.message || ''}`;
+  return SCOPE_CONSENT_AADSTS_CODES.some((code) =>
+    haystack.includes(`AADSTS${code}`)
+  );
+}
+
 module.exports = {
   initiateDeviceCodeFlow,
   pollForToken,
+  isScopeConsentError,
 };

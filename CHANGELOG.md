@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Follow-up correctness fixes from a code review of the shared-mailbox work.
+
+### Changed
+
+- **Automatic OAuth scope fallback (personal accounts)** — `config.js` no longer
+  requests the `.Shared` scopes in a single static list that breaks personal
+  Microsoft accounts. Scopes are split into `BASE_SCOPES` (consentable by any
+  account) and `SHARED_SCOPES` (`Mail.Read.Shared` + `Mail.ReadWrite.Shared`);
+  the auth flow attempts `BASE_SCOPES + SHARED_SCOPES` and, when an account can't
+  consent to `.Shared`, automatically retries with `AUTH_CONFIG.fallbackScopes`
+  (base only). Work/school accounts consent on the first try; personal accounts
+  incur one extra device code (or browser redirect). No `OUTLOOK_AUTH_AUDIENCE`
+  change or manual scope editing required. Rejection is classified by
+  `isScopeConsentError` (`auth/device-code.js`); the browser flow mirrors the
+  fallback via a one-shot `/auth?fallback=1` redirect (`auth/oauth-server.js`).
+- **Refresh uses granted scopes** — `token-storage.js` now persists
+  `granted_scopes` and refreshes with them (not the full configured set), so a
+  base-only fallback session isn't logged out ~1h later by re-requesting
+  `.Shared`.
+
+### Fixed
+
+- **`folders` (action `delete`) ignored `sharedMailbox`** — delete resolved and
+  removed the folder in the signed-in mailbox even when a shared mailbox was
+  specified (a destructive wrong-mailbox operation). It now honours
+  `sharedMailbox`/`email` (requires `Mail.ReadWrite.Shared`); the protected-folder
+  guard still applies.
+- **`folders` (action `stats`) ignored `sharedMailbox`** — stats reported the
+  signed-in account's counts. It now targets the shared mailbox and gains
+  custom-subfolder / nested-path resolution via `resolveFolderRef`.
+- **`search-emails` `deltaMode` ignored `sharedMailbox`** — incremental sync
+  hard-coded `me/mailFolders/...`. Initial sync now resolves the folder within
+  the target mailbox (well-known name, nested path, custom subfolder, or ID) and
+  routes through it.
+- **`search-emails` `internetMessageId` ignored `sharedMailbox`** — the RFC
+  Message-ID lookup hard-coded `me/messages` and the router dropped the parameter
+  before the handler saw it. Both now forward and honour `sharedMailbox`/`email`.
+
 ## [3.8.2] - 2026-06
 
 Shared/delegated mailbox release. Closes the long-standing gap where the

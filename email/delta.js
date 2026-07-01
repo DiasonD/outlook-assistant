@@ -8,6 +8,7 @@ const { callGraphAPI } = require('../utils/graph-api');
 const { ensureAuthenticated } = require('../auth');
 const { formatEmailList, VERBOSITY } = require('../utils/response-formatter');
 const { getEmailFields } = require('../utils/field-presets');
+const { buildMailboxPrefix, resolveFolderRef } = require('./folder-utils');
 
 /**
  * List emails delta handler - incremental sync
@@ -23,6 +24,10 @@ async function handleListEmailsDelta(args) {
   const deltaToken = args.deltaToken;
   const maxResults = Math.min(args.maxResults || 100, 200);
   const verbosity = args.outputVerbosity || 'standard';
+  // Optional: scope the delta sync to a shared/delegated mailbox rather than
+  // the signed-in account. Accepts a custom/localized folder name or path.
+  const sharedMailbox = args.sharedMailbox || args.email || null;
+  const prefix = buildMailboxPrefix(sharedMailbox);
 
   try {
     const accessToken = await ensureAuthenticated();
@@ -35,8 +40,21 @@ async function handleListEmailsDelta(args) {
       // Continue from previous sync - use deltaLink directly
       endpoint = deltaToken;
     } else {
-      // Initial sync - start fresh
-      endpoint = `me/mailFolders/${folder}/messages/delta`;
+      // Initial sync - start fresh. Resolve the folder (well-known name,
+      // nested path, display name, or raw ID) within the target mailbox so
+      // custom subfolders work for shared mailboxes too.
+      const ref = await resolveFolderRef(accessToken, folder, sharedMailbox);
+      if (!ref) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Folder "${folder}" not found. Use the folders tool (action=list) to see available folders.`,
+            },
+          ],
+        };
+      }
+      endpoint = `${prefix}/mailFolders/${ref}/messages/delta`;
       queryParams = {
         $select: getEmailFields('delta'),
         $top: maxResults.toString(),

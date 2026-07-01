@@ -3,7 +3,10 @@
  */
 const { callGraphAPI } = require('../utils/graph-api');
 const { ensureAuthenticated } = require('../auth');
-const { getFolderIdByName } = require('../email/folder-utils');
+const {
+  getFolderIdByName,
+  buildMailboxPrefix,
+} = require('../email/folder-utils');
 
 /**
  * Protected folder names that cannot be deleted
@@ -27,6 +30,8 @@ const PROTECTED_FOLDERS = [
  */
 async function handleDeleteFolder(args) {
   const { folderId, folderName } = args;
+  const sharedMailbox = args.sharedMailbox || args.email || null;
+  const prefix = buildMailboxPrefix(sharedMailbox);
 
   if (!folderId && !folderName) {
     return {
@@ -58,7 +63,11 @@ async function handleDeleteFolder(args) {
 
     // Resolve folder name to ID if needed
     if (!resolvedId && folderName) {
-      resolvedId = await getFolderIdByName(accessToken, folderName);
+      resolvedId = await getFolderIdByName(
+        accessToken,
+        folderName,
+        sharedMailbox
+      );
       if (!resolvedId) {
         return {
           content: [
@@ -72,7 +81,11 @@ async function handleDeleteFolder(args) {
     }
 
     // Delete the folder
-    await callGraphAPI(accessToken, 'DELETE', `me/mailFolders/${resolvedId}`);
+    await callGraphAPI(
+      accessToken,
+      'DELETE',
+      `${prefix}/mailFolders/${resolvedId}`
+    );
 
     const displayName = folderName || resolvedId;
     return {

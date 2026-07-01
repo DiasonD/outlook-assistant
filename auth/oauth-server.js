@@ -51,7 +51,46 @@ const templates = {
     </html>`,
 };
 
+// Scope sets for the browser auth-server process. This process is env-driven
+// and standalone, so we hardcode the two arrays here rather than import from
+// config.js — KEEP IN SYNC WITH config.js (BASE_SCOPES / SHARED_SCOPES), which
+// is the source of truth. The `.Shared` scopes aren't consentable by personal
+// Microsoft accounts; the /auth/callback fallback handles that with one extra
+// redirect to the base-only scope set.
+const BROWSER_BASE_SCOPES = [
+  'offline_access',
+  'User.Read',
+  'Mail.Read',
+  'Mail.ReadWrite',
+  'Mail.Send',
+  'Calendars.Read',
+  'Calendars.ReadWrite',
+  'Contacts.Read',
+  'Contacts.ReadWrite',
+  'People.Read',
+  'MailboxSettings.ReadWrite',
+];
+const BROWSER_SHARED_SCOPES = ['Mail.Read.Shared', 'Mail.ReadWrite.Shared'];
+
+// AADSTS codes / OAuth errors that indicate a scope-consent rejection. Mirrors
+// auth/device-code.js isScopeConsentError (kept local to avoid importing the
+// MCP config into the standalone auth-server process).
+const SCOPE_CONSENT_MARKERS = [
+  'invalid_scope',
+  'invalid_grant',
+  'AADSTS650053',
+  'AADSTS65001',
+  'AADSTS70011',
+  'AADSTS28000',
+];
+
+function isScopeConsentCallbackError(error, errorDescription) {
+  const haystack = `${error || ''} ${errorDescription || ''}`;
+  return SCOPE_CONSENT_MARKERS.some((m) => haystack.includes(m));
+}
+
 function createAuthConfig(envPrefix = 'OUTLOOK_') {
+  const fallbackScopes = BROWSER_BASE_SCOPES;
   return {
     clientId:
       process.env[`${envPrefix}CLIENT_ID`] || process.env.MS_CLIENT_ID || '',
@@ -62,9 +101,11 @@ function createAuthConfig(envPrefix = 'OUTLOOK_') {
     redirectUri:
       process.env[`${envPrefix}REDIRECT_URI`] ||
       'http://localhost:3333/auth/callback',
-    scopes: (
-      process.env[`${envPrefix}SCOPES`] || 'offline_access User.Read Mail.Read'
-    ).split(' '),
+    // Default to base + shared; the OUTLOOK_SCOPES override still wins.
+    scopes: process.env[`${envPrefix}SCOPES`]
+      ? process.env[`${envPrefix}SCOPES`].split(' ')
+      : [...BROWSER_BASE_SCOPES, ...BROWSER_SHARED_SCOPES],
+    fallbackScopes,
     tokenEndpoint:
       process.env[`${envPrefix}TOKEN_ENDPOINT`] ||
       'https://login.microsoftonline.com/common/oauth2/v2.0/token',
@@ -103,7 +144,16 @@ function setupOAuthRoutes(
           )
         );
     }
-    const state = crypto.randomBytes(16).toString('hex'); // Generate a random 16-byte string
+    // When ?fallback=1 is set we request only the base scopes (the account
+    // couldn't consent to the `.Shared` scopes). We mark the state with a
+    // `fb.` prefix so /auth/callback can detect we're already in fallback and
+    // not loop if it still fails.
+    const isFallback = req.query.fallback === '1';
+    const scopes = isFallback
+      ? authConfig.fallbackScopes || authConfig.scopes
+      : authConfig.scopes;
+    const stateMarker = isFallback ? 'fb.' : '';
+    const state = stateMarker + crypto.randomBytes(16).toString('hex'); // Random + fallback marker
     // Store state in session or similar mechanism if available.
     // For a server without sessions, this state would need to be passed through and verified differently,
     // or a temporary server-side storage (like a short-lived cache) would be needed.
@@ -117,7 +167,7 @@ function setupOAuthRoutes(
         client_id: authConfig.clientId,
         response_type: 'code',
         redirect_uri: authConfig.redirectUri,
-        scope: authConfig.scopes.join(' '),
+        scope: scopes.join(' '),
         response_mode: 'query',
         state: state,
       }
@@ -172,6 +222,20 @@ function setupOAuthRoutes(
     // if (req.session) delete req.session.oauthState;
 
     if (error) {
+      // Scope-consent rejection (e.g. personal account can't consent to the
+      // `.Shared` scopes) → retry once with base scopes via a single redirect,
+      // unless we're already in fallback (state marked `fb.`) — then surface it.
+      const alreadyFallback =
+        typeof state === 'string' && state.startsWith('fb.');
+      if (
+        !alreadyFallback &&
+        isScopeConsentCallbackError(error, error_description)
+      ) {
+        console.error(
+          `[auth] Scope-consent rejection (${error}); retrying with base scopes.`
+        );
+        return res.redirect('/auth?fallback=1');
+      }
       return res
         .status(400)
         .send(templates.authError(error, error_description));

@@ -3,12 +3,14 @@ const {
   handleCreateFolder,
   handleMoveEmails,
   handleGetFolderStats,
+  handleDeleteFolder,
 } = require('../../folder');
 const { callGraphAPI } = require('../../utils/graph-api');
 const { ensureAuthenticated } = require('../../auth');
 const {
   getFolderIdByName,
   buildMailboxPrefix,
+  resolveFolderRef,
 } = require('../../email/folder-utils');
 
 jest.mock('../../utils/graph-api');
@@ -401,9 +403,9 @@ describe('handleMoveEmails', () => {
 
 describe('handleGetFolderStats', () => {
   it('should return folder statistics', async () => {
-    // resolveFolderName: well-known folder lookup
+    // resolveFolderName now delegates to the shared resolveFolderRef
+    resolveFolderRef.mockResolvedValue('inbox-id');
     callGraphAPI
-      .mockResolvedValueOnce({ id: 'inbox-id' }) // resolveFolderName
       .mockResolvedValueOnce({
         // folder details
         id: 'inbox-id',
@@ -426,12 +428,88 @@ describe('handleGetFolderStats', () => {
     expect(result.content[0].text).toContain('Inbox');
     expect(result.content[0].text).toContain('42');
     expect(result._meta.totalItems).toBe(42);
+    // Default mailbox: folder details fetched from `me`
+    expect(callGraphAPI).toHaveBeenCalledWith(
+      mockAccessToken,
+      'GET',
+      'me/mailFolders/inbox-id',
+      null,
+      expect.any(Object)
+    );
+  });
+
+  it('should return stats for a shared mailbox', async () => {
+    resolveFolderRef.mockResolvedValue('shared-folder-id');
+    callGraphAPI
+      .mockResolvedValueOnce({
+        id: 'shared-folder-id',
+        displayName: 'Lieferanten',
+        totalItemCount: 7,
+        unreadItemCount: 1,
+        childFolderCount: 0,
+      })
+      .mockResolvedValueOnce({
+        value: [{ receivedDateTime: '2024-02-15T10:00:00Z' }],
+      })
+      .mockResolvedValueOnce({
+        value: [{ receivedDateTime: '2024-02-01T08:00:00Z' }],
+      });
+
+    const result = await handleGetFolderStats({
+      folder: 'Lieferanten',
+      sharedMailbox: 'shared@company.com',
+    });
+
+    expect(result.content[0].text).toContain('Lieferanten');
+    // Folder resolution must be scoped to the shared mailbox
+    expect(resolveFolderRef).toHaveBeenCalledWith(
+      mockAccessToken,
+      'Lieferanten',
+      'shared@company.com'
+    );
+    // Folder details GET must target the shared mailbox
+    expect(callGraphAPI).toHaveBeenCalledWith(
+      mockAccessToken,
+      'GET',
+      'users/shared@company.com/mailFolders/shared-folder-id',
+      null,
+      expect.any(Object)
+    );
+    // Date-range fetch must also target the shared mailbox
+    expect(callGraphAPI).toHaveBeenCalledWith(
+      mockAccessToken,
+      'GET',
+      'users/shared@company.com/mailFolders/shared-folder-id/messages',
+      null,
+      expect.any(Object)
+    );
+  });
+
+  it('should accept email as an alias for sharedMailbox', async () => {
+    resolveFolderRef.mockResolvedValue('shared-folder-id');
+    callGraphAPI.mockResolvedValueOnce({
+      id: 'shared-folder-id',
+      displayName: 'Lieferanten',
+      totalItemCount: 0,
+      unreadItemCount: 0,
+    });
+
+    await handleGetFolderStats({
+      folder: 'Lieferanten',
+      email: 'shared@company.com',
+      outputVerbosity: 'minimal',
+    });
+
+    expect(resolveFolderRef).toHaveBeenCalledWith(
+      mockAccessToken,
+      'Lieferanten',
+      'shared@company.com'
+    );
   });
 
   it('should handle folder not found', async () => {
-    // 'NonExistent' is not a well-known folder, so resolveFolderName goes
-    // straight to the name search, which returns empty
-    callGraphAPI.mockResolvedValueOnce({ value: [] });
+    // Resolver returns null for an unknown folder
+    resolveFolderRef.mockResolvedValue(null);
 
     const result = await handleGetFolderStats({ folder: 'NonExistent' });
 
@@ -439,15 +517,14 @@ describe('handleGetFolderStats', () => {
   });
 
   it('should handle minimal verbosity', async () => {
-    callGraphAPI
-      .mockResolvedValueOnce({ id: 'inbox-id' }) // resolveFolderName: well-known lookup
-      .mockResolvedValueOnce({
-        // folder details
-        id: 'inbox-id',
-        displayName: 'Inbox',
-        totalItemCount: 10,
-        unreadItemCount: 2,
-      });
+    resolveFolderRef.mockResolvedValue('inbox-id');
+    callGraphAPI.mockResolvedValueOnce({
+      // folder details
+      id: 'inbox-id',
+      displayName: 'Inbox',
+      totalItemCount: 10,
+      unreadItemCount: 2,
+    });
     // minimal verbosity skips date range fetch
 
     const result = await handleGetFolderStats({
@@ -468,14 +545,131 @@ describe('handleGetFolderStats', () => {
 
   it('should handle API error', async () => {
     // resolveFolderName succeeds, but folder details call fails
-    callGraphAPI
-      .mockResolvedValueOnce({ id: 'inbox-id' }) // resolveFolderName
-      .mockRejectedValueOnce(new Error('Stats failed')); // folder details
+    resolveFolderRef.mockResolvedValue('inbox-id');
+    callGraphAPI.mockRejectedValueOnce(new Error('Stats failed')); // folder details
 
     const result = await handleGetFolderStats({});
 
     expect(result.content[0].text).toBe(
       'Error getting folder stats: Stats failed'
     );
+  });
+});
+
+describe('handleDeleteFolder', () => {
+  it('should delete a folder by name in the signed-in mailbox (me)', async () => {
+    getFolderIdByName.mockResolvedValue('custom-folder-id');
+    callGraphAPI.mockResolvedValue({});
+
+    const result = await handleDeleteFolder({ folderName: 'Old Project' });
+
+    expect(result.content[0].text).toContain('deleted successfully');
+    // Name resolution scoped to `me`
+    expect(getFolderIdByName).toHaveBeenCalledWith(
+      mockAccessToken,
+      'Old Project',
+      null
+    );
+    // DELETE issued against `me`
+    expect(callGraphAPI).toHaveBeenCalledWith(
+      mockAccessToken,
+      'DELETE',
+      'me/mailFolders/custom-folder-id'
+    );
+  });
+
+  it('should delete a folder inside a shared mailbox', async () => {
+    getFolderIdByName.mockResolvedValue('shared-folder-id');
+    callGraphAPI.mockResolvedValue({});
+
+    const result = await handleDeleteFolder({
+      folderName: 'Old Project',
+      sharedMailbox: 'shared@company.com',
+    });
+
+    expect(result.content[0].text).toContain('deleted successfully');
+    // Name resolution must be scoped to the shared mailbox
+    expect(getFolderIdByName).toHaveBeenCalledWith(
+      mockAccessToken,
+      'Old Project',
+      'shared@company.com'
+    );
+    // DELETE must target the shared mailbox, NOT `me`
+    expect(callGraphAPI).toHaveBeenCalledWith(
+      mockAccessToken,
+      'DELETE',
+      'users/shared@company.com/mailFolders/shared-folder-id'
+    );
+  });
+
+  it('should accept email as an alias for sharedMailbox', async () => {
+    getFolderIdByName.mockResolvedValue('shared-folder-id');
+    callGraphAPI.mockResolvedValue({});
+
+    await handleDeleteFolder({
+      folderName: 'Old Project',
+      email: 'shared@company.com',
+    });
+
+    expect(callGraphAPI).toHaveBeenCalledWith(
+      mockAccessToken,
+      'DELETE',
+      'users/shared@company.com/mailFolders/shared-folder-id'
+    );
+  });
+
+  it('should delete by raw folderId against the shared mailbox without resolving', async () => {
+    callGraphAPI.mockResolvedValue({});
+
+    await handleDeleteFolder({
+      folderId: 'raw-id-123',
+      sharedMailbox: 'shared@company.com',
+    });
+
+    expect(getFolderIdByName).not.toHaveBeenCalled();
+    expect(callGraphAPI).toHaveBeenCalledWith(
+      mockAccessToken,
+      'DELETE',
+      'users/shared@company.com/mailFolders/raw-id-123'
+    );
+  });
+
+  it('should block protected folders regardless of sharedMailbox', async () => {
+    const result = await handleDeleteFolder({
+      folderName: 'Inbox',
+      sharedMailbox: 'shared@company.com',
+    });
+
+    expect(result.content[0].text).toContain('Cannot delete protected folder');
+    expect(getFolderIdByName).not.toHaveBeenCalled();
+    expect(callGraphAPI).not.toHaveBeenCalled();
+  });
+
+  it('should report when the folder name cannot be resolved', async () => {
+    getFolderIdByName.mockResolvedValue(null);
+
+    const result = await handleDeleteFolder({
+      folderName: 'Ghost',
+      sharedMailbox: 'shared@company.com',
+    });
+
+    expect(result.content[0].text).toContain('not found');
+    expect(callGraphAPI).not.toHaveBeenCalled();
+  });
+
+  it('should require folderId or folderName', async () => {
+    const result = await handleDeleteFolder({});
+
+    expect(result.content[0].text).toContain(
+      'Either folderId or folderName is required'
+    );
+  });
+
+  it('should handle auth error', async () => {
+    ensureAuthenticated.mockRejectedValue(new Error('Authentication required'));
+
+    const result = await handleDeleteFolder({ folderName: 'Old Project' });
+
+    expect(result.content[0].text).toContain('Authentication required');
   });
 });

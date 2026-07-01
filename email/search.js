@@ -6,7 +6,7 @@
 const _config = require('../config'); // Reserved for future use
 const { callGraphAPI, callGraphAPIPaginated } = require('../utils/graph-api');
 const { ensureAuthenticated } = require('../auth');
-const { resolveFolderPath } = require('./folder-utils');
+const { resolveFolderPath, buildMailboxPrefix } = require('./folder-utils');
 const {
   formatEmailList,
   VERBOSITY,
@@ -913,6 +913,10 @@ function formatSearchResults(response, folder, verbosity) {
 async function handleSearchByMessageId(args) {
   const messageId = args.messageId;
   const verbosity = args.outputVerbosity || VERBOSITY.STANDARD;
+  // Optional: scope the lookup to a shared/delegated mailbox rather than the
+  // signed-in account.
+  const sharedMailbox = args.sharedMailbox || args.email || null;
+  const prefix = buildMailboxPrefix(sharedMailbox);
 
   if (!messageId) {
     return {
@@ -948,7 +952,7 @@ async function handleSearchByMessageId(args) {
     const response = await callGraphAPI(
       accessToken,
       'GET',
-      'me/messages',
+      `${prefix}/messages`,
       null,
       params
     );

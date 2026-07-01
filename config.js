@@ -64,6 +64,37 @@ if (
   );
 }
 
+// Shared/delegated mailbox access (work/school accounts only). Required to
+// read AND write a shared mailbox via /users/{email}/...; without these every
+// write (move/category/flag/mark-read) falls back to `me` and fails with
+// ErrorInvalidMailboxItemId. Personal Microsoft accounts cannot consent to
+// these — requesting them triggers an AADSTS scope-consent error. The auth flow
+// now ATTEMPTS the full set (BASE_SCOPES + SHARED_SCOPES) and automatically
+// FALLS BACK to BASE_SCOPES for accounts that can't consent to `.Shared` (see
+// auth/tools.js handleDeviceCodeComplete + auth/device-code.js
+// isScopeConsentError). No manual scope editing required.
+const SHARED_SCOPES = [
+  'Mail.Read.Shared', // access-shared-mailbox (read)
+  'Mail.ReadWrite.Shared', // shared-mailbox writes (move/category/flag/mark-read)
+];
+
+// Base scopes consentable by ANY account type (personal + work/school).
+const BASE_SCOPES = [
+  'offline_access',
+  'User.Read',
+  'Mail.Read',
+  'Mail.ReadWrite',
+  'Mail.Send',
+  'Calendars.Read',
+  'Calendars.ReadWrite',
+  'Contacts.Read',
+  'Contacts.ReadWrite',
+  'People.Read',
+  'MailboxSettings.ReadWrite',
+  // Org-dependent scopes (work/school accounts only):
+  // 'Place.Read.All',     // find-meeting-rooms tool
+];
+
 module.exports = {
   // Server information
   SERVER_NAME: 'outlook-assistant',
@@ -72,34 +103,19 @@ module.exports = {
   // Test mode setting
   USE_TEST_MODE: process.env.USE_TEST_MODE === 'true',
 
+  // OAuth scope sets (exported so tests + the fallback logic can reference them)
+  BASE_SCOPES,
+  SHARED_SCOPES,
+
   // Authentication configuration
   AUTH_CONFIG: {
     clientId: process.env.OUTLOOK_CLIENT_ID || '',
     clientSecret: process.env.OUTLOOK_CLIENT_SECRET || '',
     redirectUri: 'http://localhost:3333/auth/callback',
-    scopes: [
-      'offline_access',
-      'User.Read',
-      'Mail.Read',
-      'Mail.ReadWrite',
-      'Mail.Send',
-      'Calendars.Read',
-      'Calendars.ReadWrite',
-      'Contacts.Read',
-      'Contacts.ReadWrite',
-      'People.Read',
-      'MailboxSettings.ReadWrite',
-      // Shared/delegated mailbox access (work/school accounts only). Required to
-      // read AND write a shared mailbox via /users/{email}/...; without these
-      // every write (move/category/flag/mark-read) falls back to `me` and fails
-      // with ErrorInvalidMailboxItemId. Note: requesting `.Shared` scopes for a
-      // personal Microsoft account can trigger an AADSTS consent error — personal
-      // accounts should remove these (or set OUTLOOK_AUTH_AUDIENCE=consumers).
-      'Mail.Read.Shared', // access-shared-mailbox (read)
-      'Mail.ReadWrite.Shared', // shared-mailbox writes (move/category/flag/mark-read)
-      // Org-dependent scopes (work/school accounts only):
-      // 'Place.Read.All',     // find-meeting-rooms tool
-    ],
+    // Preferred/attempt set: base + shared. Auth falls back to fallbackScopes
+    // (base only) when the account rejects the `.Shared` scopes.
+    scopes: [...BASE_SCOPES, ...SHARED_SCOPES],
+    fallbackScopes: BASE_SCOPES,
     tokenStorePath: path.join(homeDir, '.outlook-assistant-tokens.json'),
     authServerUrl: 'http://localhost:3333',
     audience: AUTH_AUDIENCE,

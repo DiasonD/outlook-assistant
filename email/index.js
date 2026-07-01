@@ -46,12 +46,12 @@ const emailTools = [
         deltaMode: {
           type: 'boolean',
           description:
-            'Enable delta sync mode. Returns only changes since last sync. Use deltaToken for subsequent calls.',
+            'Enable delta sync mode. Returns only changes since last sync. Use deltaToken for subsequent calls. Honors `sharedMailbox`/`email` (and custom `folder` paths) to sync within a shared/delegated mailbox.',
         },
         internetMessageId: {
           type: 'string',
           description:
-            'Look up email by Message-ID header (e.g. <abc123@example.com>). For threading/deduplication.',
+            'Look up email by Message-ID header (e.g. <abc123@example.com>). For threading/deduplication. Honors `sharedMailbox`/`email` to look up within a shared/delegated mailbox.',
         },
         conversationId: {
           type: 'string',
@@ -159,6 +159,7 @@ const emailTools = [
         return handleSearchByMessageId({
           messageId: args.internetMessageId,
           outputVerbosity: args.outputVerbosity,
+          sharedMailbox: args.sharedMailbox || args.email || null,
         });
       }
       if (args.conversationId) {

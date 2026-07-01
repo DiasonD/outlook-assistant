@@ -6,6 +6,10 @@
  */
 const { callGraphAPI } = require('../utils/graph-api');
 const { ensureAuthenticated } = require('../auth');
+const {
+  buildMailboxPrefix,
+  resolveFolderRef,
+} = require('../email/folder-utils');
 const config = require('../config');
 
 const { VERBOSITY, DEFAULT_LIMITS } = config;
@@ -18,12 +22,19 @@ const { VERBOSITY, DEFAULT_LIMITS } = config;
 async function handleGetFolderStats(args) {
   const folderName = args.folder || 'inbox';
   const verbosity = args.outputVerbosity || VERBOSITY.STANDARD;
+  const sharedMailbox = args.sharedMailbox || args.email || null;
+  const prefix = buildMailboxPrefix(sharedMailbox);
 
   try {
     const accessToken = await ensureAuthenticated();
 
-    // Resolve folder name to ID
-    const folderId = await resolveFolderName(accessToken, folderName);
+    // Resolve folder name (well-known / nested path / custom subfolder / ID)
+    // to a folder ID within the target mailbox (shared or `me`).
+    const folderId = await resolveFolderRef(
+      accessToken,
+      folderName,
+      sharedMailbox
+    );
 
     if (!folderId) {
       return {
@@ -40,7 +51,7 @@ async function handleGetFolderStats(args) {
     const folder = await callGraphAPI(
       accessToken,
       'GET',
-      `me/mailFolders/${folderId}`,
+      `${prefix}/mailFolders/${folderId}`,
       null,
       {
         // Note: sizeInBytes is NOT available on mailFolder resource type
@@ -52,7 +63,7 @@ async function handleGetFolderStats(args) {
     // Get recent email dates for context
     let dateRange = null;
     if (verbosity !== VERBOSITY.MINIMAL && folder.totalItemCount > 0) {
-      dateRange = await getEmailDateRange(accessToken, folderId);
+      dateRange = await getEmailDateRange(accessToken, folderId, sharedMailbox);
     }
 
     // Format response based on verbosity
@@ -91,83 +102,20 @@ async function handleGetFolderStats(args) {
 }
 
 /**
- * Resolve folder name to ID
- * @param {string} accessToken - Access token
- * @param {string} folderName - Folder name or well-known name
- * @returns {Promise<string|null>} - Folder ID or null
- */
-async function resolveFolderName(accessToken, folderName) {
-  const wellKnownFolders = {
-    inbox: 'inbox',
-    sent: 'sentitems',
-    sentitems: 'sentitems',
-    'sent items': 'sentitems',
-    drafts: 'drafts',
-    deleted: 'deleteditems',
-    deleteditems: 'deleteditems',
-    'deleted items': 'deleteditems',
-    junk: 'junkemail',
-    junkemail: 'junkemail',
-    'junk email': 'junkemail',
-    spam: 'junkemail',
-    archive: 'archive',
-    outbox: 'outbox',
-  };
-
-  const normalised = folderName.toLowerCase().trim();
-
-  // Check if it's a well-known folder
-  if (wellKnownFolders[normalised]) {
-    try {
-      const response = await callGraphAPI(
-        accessToken,
-        'GET',
-        `me/mailFolders/${wellKnownFolders[normalised]}`,
-        null,
-        { $select: 'id' }
-      );
-      return response.id;
-    } catch (_error) {
-      // Fall through to search
-    }
-  }
-
-  // Search for folder by name
-  try {
-    const response = await callGraphAPI(
-      accessToken,
-      'GET',
-      'me/mailFolders',
-      null,
-      {
-        $filter: `displayName eq '${folderName}'`,
-        $select: 'id',
-      }
-    );
-
-    if (response.value && response.value.length > 0) {
-      return response.value[0].id;
-    }
-  } catch (error) {
-    console.error(`Error searching for folder: ${error.message}`);
-  }
-
-  return null;
-}
-
-/**
  * Get date range of emails in folder
  * @param {string} accessToken - Access token
  * @param {string} folderId - Folder ID
+ * @param {string|null} [mailbox] - Shared mailbox email, or null for the signed-in user
  * @returns {Promise<object|null>} - { oldest, newest } dates or null
  */
-async function getEmailDateRange(accessToken, folderId) {
+async function getEmailDateRange(accessToken, folderId, mailbox = null) {
+  const prefix = buildMailboxPrefix(mailbox);
   try {
     // Get newest email
     const newestResponse = await callGraphAPI(
       accessToken,
       'GET',
-      `me/mailFolders/${folderId}/messages`,
+      `${prefix}/mailFolders/${folderId}/messages`,
       null,
       {
         $select: 'receivedDateTime',
@@ -180,7 +128,7 @@ async function getEmailDateRange(accessToken, folderId) {
     const oldestResponse = await callGraphAPI(
       accessToken,
       'GET',
-      `me/mailFolders/${folderId}/messages`,
+      `${prefix}/mailFolders/${folderId}/messages`,
       null,
       {
         $select: 'receivedDateTime',
