@@ -10,7 +10,7 @@ const {
   StdioServerTransport,
 } = require('@modelcontextprotocol/sdk/server/stdio.js');
 const config = require('./config');
-const { coerceArgsAgainstSchema } = require('./utils/schema-coerce');
+const { createRequestHandler } = require('./request-handler');
 
 // Import module tools
 const { authTools, setToolCount } = require('./auth');
@@ -69,118 +69,9 @@ const server = new Server(
   }
 );
 
-// Handle all requests
-server.fallbackRequestHandler = async (request) => {
-  try {
-    const { method, params, id } = request;
-    console.error(`REQUEST: ${method} [${id}]`);
-
-    // Initialize handler
-    if (method === 'initialize') {
-      console.error(`INITIALIZE REQUEST: ID [${id}]`);
-      return {
-        protocolVersion: '2024-11-05',
-        capabilities: {
-          tools: TOOLS.reduce((acc, tool) => {
-            acc[tool.name] = {};
-            return acc;
-          }, {}),
-        },
-        serverInfo: {
-          name: config.SERVER_NAME,
-          version: config.SERVER_VERSION,
-        },
-      };
-    }
-
-    // Tools list handler
-    if (method === 'tools/list') {
-      console.error(`TOOLS LIST REQUEST: ID [${id}]`);
-      console.error(`TOOLS COUNT: ${TOOLS.length}`);
-      console.error(`TOOLS NAMES: ${TOOLS.map((t) => t.name).join(', ')}`);
-
-      return {
-        tools: TOOLS.map((tool) => ({
-          name: tool.name,
-          description: tool.description,
-          inputSchema: tool.inputSchema,
-          ...(tool.annotations && { annotations: tool.annotations }),
-        })),
-      };
-    }
-
-    // Required empty responses for other capabilities
-    if (method === 'resources/list') return { resources: [] };
-    if (method === 'prompts/list') return { prompts: [] };
-
-    // Tool call handler
-    if (method === 'tools/call') {
-      try {
-        const { name, arguments: args = {} } = params || {};
-
-        console.error(`TOOL CALL: ${name}`);
-
-        // Find the tool handler
-        const tool = TOOLS.find((t) => t.name === name);
-
-        if (tool && tool.handler) {
-          // Coerce + validate args against the tool's inputSchema before
-          // dispatching. Catches array-as-string, boolean-as-string, unknown
-          // params, and out-of-enum action values at the MCP boundary so
-          // handlers receive properly-typed JS values. (#160, #162)
-          if (tool.inputSchema) {
-            const coerced = coerceArgsAgainstSchema(args, tool.inputSchema);
-            if (coerced.error) {
-              return {
-                content: [
-                  {
-                    type: 'text',
-                    text: `Invalid arguments for tool '${name}':\n${coerced.error}`,
-                  },
-                ],
-                isError: true,
-              };
-            }
-            return await tool.handler(coerced.args);
-          }
-          return await tool.handler(args);
-        }
-
-        // Tool not found
-        return {
-          error: {
-            code: -32601,
-            message: `Tool not found: ${name}`,
-          },
-        };
-      } catch (error) {
-        console.error(`Error in tools/call:`, error);
-        return {
-          error: {
-            code: -32603,
-            message: `Error processing tool call: ${error.message}`,
-          },
-        };
-      }
-    }
-
-    // For any other method, return method not found
-    return {
-      error: {
-        code: -32601,
-        message: `Method not found: ${method}`,
-      },
-    };
-  } catch (error) {
-    console.error(`Error in fallbackRequestHandler:`, error);
-    return {
-      error: {
-        code: -32603,
-        message: `Error processing request: ${error.message}`,
-      },
-    };
-  }
-};
+// Handle all requests. Dispatch + error-shaping logic lives in
+// request-handler.js so it is unit-testable without starting the transport.
+server.fallbackRequestHandler = createRequestHandler(TOOLS);
 
 // Make the script executable
 process.on('SIGTERM', () => {
