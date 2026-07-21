@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.8.2] - 2026-05
+
+Patch release fixing a silent-failure bug reported by a user whose team could
+not authenticate the Outlook connector in a remote (Claude Cowork) session:
+`auth action=authenticate method=device-code` "completed successfully but
+returned empty output" — no code, no URL — and status stayed "Not
+authenticated". Root cause was a tool-error that surfaced as empty output
+instead of a readable message. The fix makes **all** tool errors visible.
+
+### Fixed
+
+- **Device-code auth (and every tool) now surfaces failures as visible text
+  instead of empty output.** The `tools/call` dispatcher returned a
+  content-less `{ error }` object on any thrown handler error; the MCP SDK
+  coerces a result missing `content` into `{ content: [] }`, which clients
+  render as empty output while the call "succeeds". The dispatcher now returns
+  proper `{ content: [...], isError: true }` tool-error results. Extracted the
+  dispatch logic into `request-handler.js` so it is unit-tested. (#213)
+- **`auth` device-code step 1 no longer fails silently.** `handleDeviceCodeAuth`
+  now wraps initiation in try/catch (mirroring step 2) and returns an
+  actionable error with targeted hints for the common remote-connector failure
+  modes: `AADSTS9002331` audience mismatch (→ `OUTLOOK_AUTH_AUDIENCE=consumers`),
+  `invalid_client`/`unauthorized_client` (→ enable public client flows), and
+  blocked network egress to `login.microsoftonline.com`. (#213)
+
+### Changed
+
+- **Device-code HTTPS requests now time out after 15s** instead of hanging
+  indefinitely when outbound egress to `login.microsoftonline.com` is blocked
+  (e.g. a sandboxed connector), failing fast with a clear message. (#213)
+
 ## [3.8.1] - 2026-05
 
 Patch release driven by a glama.ai / safemcp.info scoring audit. Lifts the

@@ -15,6 +15,7 @@ Common issues and their fixes. For getting-started guidance, see [`docs/how-to/g
 | `search-emails` returns no results | On personal accounts, `query` auto-falls back to subject search (v3.5.2). Use `subject`, `from`, `to`, `receivedAfter` filters for best results |
 | `create-event` wrong timezone | Omit the `Z` suffix on times for local timezone. `Z` suffix = UTC, which may be hours off |
 | Auth server "missing client ID" | Ensure `OUTLOOK_CLIENT_ID`/`OUTLOOK_CLIENT_SECRET` are set as env vars for the auth server process |
+| Device code `authenticate` returns nothing / empty output | Fixed in v3.8.2 — earlier versions rendered a failed initiation as empty output (the underlying error was swallowed). Update to v3.8.2+, which shows the real error plus a hint. Common causes: `AADSTS9002331` (set `OUTLOOK_AUTH_AUDIENCE=consumers`), `invalid_client` (enable public client flows), or blocked outbound network access to `login.microsoftonline.com` (e.g. a sandboxed connector). (#213) |
 | Device code "invalid_client" | Enable "Allow public client flows" in Azure Portal > App registrations > Authentication |
 | Device code sign-in shows "wrongplace" | Normal — sign-in completed. Close the browser, call `device-code-complete` |
 | Device code sign-in redirects to localhost | Use incognito/private browser for `microsoft.com/devicelogin` |

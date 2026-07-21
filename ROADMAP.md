@@ -54,6 +54,12 @@ Larger surface-area additions and platform hardening. Roughly Q3 2026.
 
 ## Recently shipped
 
+- **v3.8.2** (May 2026) — fixed a silent-failure bug where `auth` device-code
+  authentication (and any tool error) returned empty output instead of a
+  readable message in remote connector sessions; all `tools/call` errors now
+  surface as visible `isError` content, device-code step 1 returns actionable
+  hints (audience mismatch, public-client flows, blocked egress), and
+  device-code HTTPS requests time out after 15s (#213).
 - **v3.8.0** (May 2026) — `manage-event update` action closing the modify-event competitive gap (#124, community PR #173 by @taranasus); `OUTLOOK_AUTH_AUDIENCE` env var fixing `AADSTS9002331` for personal-only Azure apps (community PR #174); `OUTLOOK_DEFAULT_TIMEZONE` env var overriding the hardcoded `Australia/Melbourne` default (community PR #175); README demo media now uses absolute URLs so it renders on npm (#171).
 - **v3.7.4** (May 2026) — F-24 chokepoint catches JSON-stringified arrays from MCP transport (#168); `search-emails kqlQuery` no longer silently drops on Step 0 fall-through (V37-F-1 part of #169); F-17 `maxResults` alias completion in list mode.
 - **v3.7.3** (May 2026) — E2E sweep fix-up. MCP boundary param coercion + validation, strict unknown-param rejection, param-name aliases across tools, file-output `outputDir` honoured, ID surfacing on creates, identity surface in `auth about`, safety-belt warnings.
