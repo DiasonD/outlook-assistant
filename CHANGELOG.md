@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.9.0] - 2026-07
+
+Feature release adding nested-folder addressing and making cross-folder email
+search reliable. Validated with a live end-to-end sweep against a personal
+Outlook.com account.
+
+### Added
+
+- **Nested folder addressing** for the `folders` tool (#216). Folders can be
+  addressed by a slash-separated **path** (`Triage/Delete`, `Inbox/Clients/Acme`,
+  case-insensitive), by explicit ID (`targetFolderId` on move, `parentFolderId`
+  on create, `folderId` on stats/delete), or by bare name (a unique top-level
+  match wins for back-compat; otherwise the folder tree is searched and
+  ambiguous names return the candidate paths + IDs). `folders list` now emits
+  each folder's **full path** and `[id: …]`. A single shared, paginated,
+  ambiguity-aware resolver replaces the two former top-level-only resolvers;
+  `search-emails folder=` also resolves nested paths now.
+
+### Changed
+
+- **`search-emails`: `kqlQuery` renamed to `searchExpression`** (#169) — it is a
+  Microsoft Graph `$search` expression, not full KQL. `kqlQuery` is retained as
+  a deprecated alias.
+
+### Fixed
+
+- **Cross-folder search (`searchAllFolders: true`) reliability** (#169,
+  V37-F-2). The client-side fallback scan depth is now decoupled from the
+  requested result count (previously ~50 messages, which — spread across all
+  folders — dropped inbox matches, so cross-folder could return *fewer* results
+  than inbox-only). Broadening scope no longer loses below-limit matches, and
+  scan coverage is disclosed via `searchMetadata` (`scanLimit`/`truncated`).
+  Multi-word queries now AND a per-word `contains(subject)` so non-contiguous
+  words match; the scope is labelled "all folders" (not "inbox"); client-side
+  fallbacks honour active boolean/date filters and run exactly once per term.
+
+## [3.8.3] - 2026-07
+
+Patch release clearing the security-audit CI gate and hardening tool
+annotations and calendar output.
+
+### Security
+
+- **Cleared the two HIGH transitive advisories** (`hono`, `fast-uri`) that
+  failed the required `npm audit --omit=dev --audit-level=high` CI gate, via
+  in-range `overrides` (`hono@^4.12.31`, `fast-uri@^3.1.4`, `body-parser@^2.3.0`)
+  (#215). These are HTTP-server-path advisories, unreachable over the stdio
+  transport, but the gate is unblocked and node_modules drift reconciled.
+- **`openWorldHint: true`** on tools whose output can carry content authored by
+  external/untrusted parties — `search-emails`, `read-email`, `search-people`,
+  `access-shared-mailbox`, `attachments`, `export` — so MCP clients apply
+  appropriate caution (e.g. prompt-injection defences) (#92).
+
+### Fixed
+
+- **`list-events` returns unambiguous times** (#118). Each start/end is now a
+  canonical UTC ISO-8601 instant (e.g. `2026-04-02T22:00:00.000Z`) followed by a
+  labelled local rendering (e.g. `GMT+10:00`), and events are requested from
+  Graph in UTC. Previously times were rendered in the server's configured
+  timezone with no label, so a consumer could not tell the zone and mis-convert.
+
 ## [3.8.2] - 2026-05
 
 Patch release fixing a silent-failure bug reported by a user whose team could
