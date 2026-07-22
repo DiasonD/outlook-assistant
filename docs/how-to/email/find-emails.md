@@ -113,7 +113,7 @@ params:
 
 Common folder names: `inbox`, `sentitems`, `drafts`, `deleteditems`, `archive`, `junkemail`.
 
-You can also search custom folders by display name:
+You can also search custom folders by display name, including nested folders addressed with a `/` path (v3.9.0) — each segment is resolved from its parent:
 
 ```
 tool: search-emails
@@ -156,6 +156,10 @@ params:
   query: "contract document"
   searchAllFolders: true
 ```
+
+Cross-folder search is a strict **superset** of an inbox-only search — it never returns fewer results than searching the inbox alone (v3.9.0). Multi-word queries also match when the words aren't adjacent in the subject, and if nothing turns up the result explicitly reports that it searched **all folders**.
+
+> **Personal accounts**: `searchAllFolders` uses the same `$search` API, so pair it with a plain-text `query` (which falls back to filters) rather than a field-scoped `searchExpression` for the most reliable coverage.
 
 ## Combine Filters
 
@@ -225,7 +229,7 @@ Delta sync is useful for inbox monitoring workflows, audit trails, and notificat
 | `receivedBefore` | Received before this date | `"2026-02-01"` |
 | `searchAllFolders` | Search every folder | `true` |
 | `count` | Number of results to return | `10` |
-| `kqlQuery` | Raw KQL for advanced queries | `"from:ceo AND hasAttachment:true"` |
+| `searchExpression` | Raw Graph `$search` expression for advanced queries (formerly `kqlQuery`) | `"from:ceo AND hasAttachment:true"` |
 | `outputVerbosity` | Detail level: minimal, standard, full | `"minimal"` |
 
 ## Tips

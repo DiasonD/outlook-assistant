@@ -23,7 +23,7 @@ jest.mock('../../config', () => ({
     defaultAuthMethod: 'device-code',
   },
   USE_TEST_MODE: false,
-  SERVER_VERSION: '3.7.2',
+  SERVER_VERSION: '3.9.0',
   DEFAULT_TIMEZONE: 'Australia/Melbourne',
 }));
 

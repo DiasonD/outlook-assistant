@@ -25,6 +25,9 @@ Common issues and their fixes. For getting-started guidance, see [`docs/how-to/g
 | `search-emails` returns 503 error | Fixed in v3.5.2 — `query` now falls back to `contains(subject)` on personal accounts. For body search, use `kqlQuery` (#98) |
 | `send-email` returns Graph 400 `ErrorInvalidRecipients` with literal-bracket address | Fixed in v3.7.4 — pass recipients as a comma-separated string (`to: "a@x.com,b@x.com"`), not an array literal. Earlier versions silently stringified array shapes; v3.7.4 rejects both live arrays and JSON-encoded array strings at the MCP boundary with a friendly hint. (#168) |
 | `search-emails kqlQuery=...` returns unrelated recent emails | Fixed in v3.7.4 — earlier versions auto-wrapped the `kqlQuery` in extra quotes (breaking phrases like `subject:"foo bar"`) and silently fell through to combined-search when Graph returned 0, dropping the filter. v3.7.4 trusts your KQL syntax and never falls through. (#169 V37-F-1) |
+| Can't move or address a nested folder (e.g. a subfolder) | Fixed in v3.9.0 — address folders by path, e.g. `targetFolder="Parent/Child"`, or by `targetFolderId` / `folderId`. Run `folders action=list` to see each folder's full path and ID. Earlier versions resolved only top-level folder names. (#216) |
+| `searchAllFolders: true` returns fewer results than an inbox search | Fixed in v3.9.0 — cross-folder search now returns a superset of an inbox-scoped search; broadening the scope never shrinks the result set. (#169) |
+| `kqlQuery` shown as deprecated | `kqlQuery` was renamed to `searchExpression` in v3.9.0 (it was always a Microsoft Graph `$search` expression, never full KQL). The `kqlQuery` alias still works for back-compat — prefer `searchExpression`. |
 
 ## Checking Authentication State
 

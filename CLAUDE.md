@@ -38,7 +38,7 @@ Module layout, file organisation, and the v1→v3 tool-consolidation map live in
 
 ## Safety Controls
 
-- **MCP annotations** on all 22 tools (`readOnlyHint`, `destructiveHint`, `idempotentHint`)
+- **MCP annotations** on all 22 tools (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`). `openWorldHint: true` on tools that surface external-sender content (`search-emails`, `read-email`, `search-people`, `access-shared-mailbox`, `attachments`, `export`) (#92)
 - **get-mail-tips**: pre-send recipient validation (out-of-office, mailbox full, delivery restrictions)
 - **send-email**: `dryRun` param, `checkRecipients` param (mail tips), session rate limiting (`OUTLOOK_MAX_EMAILS_PER_SESSION`), recipient allowlist (`OUTLOOK_ALLOWED_RECIPIENTS`)
 - **draft**: `dryRun` on create, `checkRecipients` (mail tips), recipient allowlist, rate limiting. Send action shares limit with `send-email`.

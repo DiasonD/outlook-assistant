@@ -73,7 +73,7 @@ const emailTools = [
         searchExpression: {
           type: 'string',
           description:
-            'Raw Microsoft Graph `$search` expression for advanced server-side search, e.g. `subject:"invoice"`, `from:github.com`, or `foo OR bar`. Quote your own phrases; a single bare token is auto-quoted. Pair with `searchAllFolders: true` for cross-folder search. Bypasses other search params.',
+            'Raw Microsoft Graph `$search` expression for advanced server-side search, e.g. `subject:"invoice"`, `from:github.com`, or `foo OR bar`. Quote your own phrases; a single bare token is auto-quoted. Pair with `searchAllFolders: true` for cross-folder search. Bypasses other search params. NOTE: on personal Outlook.com accounts field-scoped `$search` is best-effort and may return nothing — prefer `query` there (it has progressive fallback).',
         },
         kqlQuery: {
           type: 'string',
