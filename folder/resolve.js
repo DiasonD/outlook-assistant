@@ -37,8 +37,10 @@ const WELL_KNOWN = {
   outbox: 'outbox',
 };
 
-const FOLDER_SELECT =
-  'id,displayName,parentFolderId,childFolderCount,wellKnownName';
+// NB: mailFolder has no selectable `wellKnownName` property (Graph 400s on it,
+// verified against consumer accounts) — well-known folders are addressed by
+// name in the URL, not via a returned field.
+const FOLDER_SELECT = 'id,displayName,parentFolderId,childFolderCount';
 // Safety caps against pathological/looping nesting when walking the tree for a
 // bare-name search. Beyond these we refuse to guess and ask for a path/ID.
 const MAX_TREE_DEPTH = 20;
@@ -102,7 +104,6 @@ function toRecord(folder, path) {
     id: folder.id,
     displayName: folder.displayName,
     parentId: folder.parentFolderId || null,
-    wellKnownName: folder.wellKnownName || null,
     path: path || folder.displayName,
   };
 }
@@ -262,10 +263,10 @@ async function resolvePath(accessToken, segments) {
  * Resolve a folder from a name/path and/or explicit ID.
  * @param {string} accessToken
  * @param {{name?: string, id?: string}} spec
- * @returns {Promise<{id: string, displayName: string, parentId: string|null, wellKnownName: string|null, path: string}>}
+ * @returns {Promise<{id: string, displayName: string, parentId: string|null, path: string}>}
  *   `path` is the full slash-separated path when resolved by name/path/alias;
  *   when resolved by ID it is the folder's display name only (ancestors are not
- *   fetched). `wellKnownName` is set for system folders (inbox, archive, …).
+ *   fetched).
  */
 async function resolveFolder(accessToken, spec = {}) {
   const id = (spec.id || '').trim();

@@ -38,7 +38,6 @@ describe('resolveFolder — well-known aliases', () => {
       id: 'inbox-id',
       displayName: 'Inbox',
       parentId: null,
-      wellKnownName: null,
       path: 'Inbox',
     });
     expect(callGraphAPI).toHaveBeenCalledTimes(1);
@@ -272,16 +271,13 @@ describe('resolveFolder — validation', () => {
     expect(callGraphAPI.mock.calls[0][2]).toBe('me/mailFolders/inbox');
   });
 
-  it('carries wellKnownName through for system folders', async () => {
-    callGraphAPI.mockResolvedValueOnce({
-      id: 'inbox-id',
-      displayName: 'Inbox',
-      parentFolderId: 'root',
-      childFolderCount: 0,
-      wellKnownName: 'inbox',
-    });
-    const r = await resolveFolder(TOKEN, { id: 'inbox-id' });
-    expect(r.wellKnownName).toBe('inbox');
+  it('does not request the non-existent wellKnownName $select field', async () => {
+    // Graph 400s on `wellKnownName` for mailFolder — the resolver must never
+    // select it. (Regression guard for a live-caught bug.)
+    callGraphAPI.mockResolvedValueOnce(folder('inbox-id', 'Inbox'));
+    await resolveFolder(TOKEN, { id: 'inbox-id' });
+    const selectArg = callGraphAPI.mock.calls[0][4]?.$select || '';
+    expect(selectArg).not.toContain('wellKnownName');
   });
 });
 

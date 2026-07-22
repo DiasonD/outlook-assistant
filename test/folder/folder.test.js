@@ -467,7 +467,7 @@ describe('handleDeleteFolder', () => {
     );
   });
 
-  it('blocks deleting a protected folder by literal name (fast guard)', async () => {
+  it('blocks deleting a protected folder by literal name', async () => {
     const result = await handleDeleteFolder({ folderName: 'Inbox' });
 
     expect(result.content[0].text).toContain('Cannot delete protected folder');
@@ -476,20 +476,16 @@ describe('handleDeleteFolder', () => {
     expect(callGraphAPI).not.toHaveBeenCalled();
   });
 
-  it('blocks deleting a system folder addressed by ID (wellKnownName guard)', async () => {
-    resolveFolder.mockResolvedValue({
-      id: 'inbox-id',
-      displayName: 'Inbox',
-      path: 'Inbox',
-      wellKnownName: 'inbox',
-      parentId: null,
-    });
+  it('blocks deleting a system folder by display-name variant / alias', async () => {
+    // The WELL_KNOWN-based guard catches "Sent Items", "junk", "spam", etc.,
+    // not just the Graph names.
+    const sent = await handleDeleteFolder({ folderName: 'Sent Items' });
+    expect(sent.content[0].text).toContain('Cannot delete protected folder');
 
-    const result = await handleDeleteFolder({ folderId: 'inbox-id' });
+    const junk = await handleDeleteFolder({ folderName: 'spam' });
+    expect(junk.content[0].text).toContain('Cannot delete protected folder');
 
-    expect(result.content[0].text).toContain('Cannot delete protected folder');
-    expect(result.content[0].text).toContain('inbox');
-    // Guard fires AFTER resolution but BEFORE any DELETE.
+    expect(resolveFolder).not.toHaveBeenCalled();
     expect(callGraphAPI).not.toHaveBeenCalled();
   });
 
