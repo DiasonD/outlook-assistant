@@ -37,7 +37,9 @@ const emailTools = [
     annotations: {
       title: 'Search Emails',
       readOnlyHint: true,
-      openWorldHint: false,
+      // openWorldHint: output includes email content authored by external
+      // senders (bodies/previews/threads) — may contain prompt-injection. (#92)
+      openWorldHint: true,
     },
     inputSchema: {
       type: 'object',
@@ -183,7 +185,8 @@ const emailTools = [
     annotations: {
       title: 'Read Email',
       readOnlyHint: true,
-      openWorldHint: false,
+      // openWorldHint: returns full message body from external senders. (#92)
+      openWorldHint: true,
     },
     inputSchema: {
       type: 'object',
@@ -460,7 +463,9 @@ const emailTools = [
       title: 'Attachments',
       readOnlyHint: false,
       destructiveHint: false,
-      openWorldHint: false,
+      // openWorldHint: action=view returns attachment content supplied by
+      // external senders. (#92)
+      openWorldHint: true,
     },
     inputSchema: {
       type: 'object',
@@ -521,7 +526,9 @@ const emailTools = [
       title: 'Export Emails',
       readOnlyHint: false,
       destructiveHint: false,
-      openWorldHint: false,
+      // openWorldHint: exports full message/MIME/conversation content from
+      // external senders. (#92)
+      openWorldHint: true,
     },
     inputSchema: {
       type: 'object',
