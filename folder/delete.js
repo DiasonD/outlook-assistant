@@ -3,10 +3,13 @@
  */
 const { callGraphAPI } = require('../utils/graph-api');
 const { ensureAuthenticated } = require('../auth');
-const { getFolderIdByName } = require('../email/folder-utils');
+const { resolveFolder } = require('./resolve');
 
 /**
- * Protected folder names that cannot be deleted
+ * Protected folders that cannot be deleted. `PROTECTED_FOLDERS` is a fast
+ * literal-name short-circuit; `PROTECTED_WELL_KNOWN` is the authoritative
+ * check applied to the RESOLVED folder's Graph `wellKnownName`, so a path or
+ * ID that resolves to a system folder can't bypass the guard. (#216 review)
  */
 const PROTECTED_FOLDERS = [
   'inbox',
@@ -17,6 +20,7 @@ const PROTECTED_FOLDERS = [
   'archive',
   'outbox',
 ];
+const PROTECTED_WELL_KNOWN = new Set(PROTECTED_FOLDERS);
 
 /**
  * Delete folder handler
@@ -39,8 +43,11 @@ async function handleDeleteFolder(args) {
     };
   }
 
-  // Guard against deleting protected folders
-  if (folderName && PROTECTED_FOLDERS.includes(folderName.toLowerCase())) {
+  // Fast literal-name guard (clear message for the obvious case).
+  if (
+    folderName &&
+    PROTECTED_FOLDERS.includes(folderName.toLowerCase().trim())
+  ) {
     return {
       content: [
         {
@@ -54,27 +61,40 @@ async function handleDeleteFolder(args) {
   try {
     const accessToken = await ensureAuthenticated();
 
-    let resolvedId = folderId;
-
-    // Resolve folder name to ID if needed
-    if (!resolvedId && folderName) {
-      resolvedId = await getFolderIdByName(accessToken, folderName);
-      if (!resolvedId) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Folder "${folderName}" not found. Use folders (action=list) to see available folders.`,
-            },
-          ],
-        };
-      }
+    // Always resolve (by name/path OR explicit ID) so protection can be
+    // enforced on the CANONICAL folder identity — a path/ID that lands on a
+    // system folder must not slip past the literal-name guard. (#216 review)
+    let resolved;
+    try {
+      resolved = await resolveFolder(accessToken, {
+        id: folderId,
+        name: folderName,
+      });
+    } catch (resolveError) {
+      return {
+        content: [{ type: 'text', text: resolveError.message }],
+      };
     }
+
+    if (
+      resolved.wellKnownName &&
+      PROTECTED_WELL_KNOWN.has(resolved.wellKnownName.toLowerCase())
+    ) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Cannot delete protected folder "${resolved.displayName}" (system folder: ${resolved.wellKnownName}).`,
+          },
+        ],
+      };
+    }
+
+    const resolvedId = resolved.id;
+    const displayName = resolved.path;
 
     // Delete the folder
     await callGraphAPI(accessToken, 'DELETE', `me/mailFolders/${resolvedId}`);
-
-    const displayName = folderName || resolvedId;
     return {
       content: [
         {
