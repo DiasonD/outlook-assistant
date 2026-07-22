@@ -929,9 +929,11 @@ function formatSearchResults(response, folder, verbosity) {
     // Actionable guidance when filters were specified but matched nothing
     if (response._searchInfo?.noResults) {
       const filters = response._searchInfo.originalTerms || {};
+      // Relabel internal keys to the caller-facing param names. (#169)
+      const FILTER_LABELS = { kqlQuery: 'searchExpression' };
       const activeFilters = Object.entries(filters)
         .filter(([, v]) => v)
-        .map(([k]) => k);
+        .map(([k]) => FILTER_LABELS[k] || k);
       const filterDesc =
         activeFilters.length > 0
           ? ` (filters: ${activeFilters.join(', ')})`
