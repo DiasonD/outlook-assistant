@@ -16,19 +16,22 @@ npx kill-port 3333       # Kill auth server if port blocked
 
 ### Authentication
 
-**Device code flow (default, recommended for remote/headless):**
-1. Call `auth` tool with `action=authenticate` (uses device-code by default)
-2. Visit the URL shown, enter the code
-3. Call `auth` tool with `action=device-code-complete` to finish
-4. No auth server, SSH tunnel, or port forwarding needed
+**Device code flow (default — recommended for remote/headless; no auth server, SSH tunnel, or port forwarding needed):**
+1. Call `auth` tool with `action=authenticate` → returns a code + URL (device-code by default)
+2. Visit the URL on any device, enter the code, and sign in
+3. Call `auth` tool with `action=device-code-complete` → tokens saved
+
+**Browser redirect flow (alternative, localhost only):**
+1. Start the auth server: `npm run auth-server` (needs `OUTLOOK_CLIENT_ID`/`OUTLOOK_CLIENT_SECRET` env vars)
+2. Call `auth` tool with `action=authenticate, method=browser` → returns a URL
+3. Open the URL → Microsoft login → grant permissions → tokens saved automatically
+
+Full walkthrough: [`docs/how-to/getting-started/connect-outlook-to-claude.md`](docs/how-to/getting-started/connect-outlook-to-claude.md). The MCP server reads its own credentials from `.mcp.json` inline `kc_get` calls.
 
 **Azure prerequisites**:
 - Add platform: Authentication > Add a platform > Mobile and desktop applications > check `nativeclient` URI
 - Enable "Allow public client flows" in Authentication > Advanced settings
 - Use a **private/incognito browser** for `microsoft.com/devicelogin` (avoids cached session interference)
-
-**Browser flow (alternative, for localhost only):**
-Start the auth server with `npm run auth-server` — needs `OUTLOOK_CLIENT_ID`/`OUTLOOK_CLIENT_SECRET` as env vars. The MCP server itself reads credentials from `.mcp.json` inline `kc_get` calls. Full walkthrough: [`docs/how-to/getting-started/connect-outlook-to-claude.md`](docs/how-to/getting-started/connect-outlook-to-claude.md).
 
 **Token refresh**: Tokens auto-refresh when expired (via `token-storage.js`). Re-authentication only needed when the refresh token expires (~90 days).
 
@@ -88,21 +91,6 @@ OUTLOOK_DEFAULT_TIMEZONE=Australia/Melbourne  # Optional: overrides hardcoded de
 - Timezone: `Australia/Melbourne`
 - Page size: 25
 - Max results: 100
-
-## Authentication Flow
-
-**Device code (default — no auth server needed):**
-1. Call `auth` tool with `action=authenticate` → get code + URL
-2. Visit URL on any device, enter the code, sign in
-3. Call `auth` tool with `action=device-code-complete` → tokens saved
-
-**Browser redirect (alternative):**
-1. Start auth server: `npm run auth-server`
-2. Call `auth` tool with `action=authenticate, method=browser` → get URL
-3. Open URL in browser → Microsoft login
-4. Grant permissions → tokens saved automatically
-
-**Token refresh**: Tokens auto-refresh transparently via `token-storage.js`. Re-auth only needed when refresh token expires (~90 days).
 
 ## Adding New Tools
 
