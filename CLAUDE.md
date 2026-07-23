@@ -44,7 +44,7 @@ Module layout, file organisation, and the v1→v3 tool-consolidation map live in
 - **draft**: `dryRun` on create, `checkRecipients` (mail tips), recipient allowlist, rate limiting. Send action shares limit with `send-email`.
 - **manage-rules**: `dryRun` on create/update, rate limiting (`OUTLOOK_MAX_MANAGE_RULES_PER_SESSION`), recipient allowlist on forwardTo/redirectTo, no `permanentDelete` (too dangerous for AI). Supports 12 conditions, 9 actions, and exceptions.
 - **manage-event**: marked `destructiveHint: true` (covers `decline`/`cancel`/`delete`; `update` action added v3.8.0 is non-destructive in isolation but inherits the tool-level annotation — use `dryRun: true` to preview update payloads). `accept` is deliberately omitted — Microsoft Graph doesn't expose an `accept` verb in a way that works across personal/M365 reliably; use the Outlook UI to accept invitations.
-- 7 read-only tools auto-approved by Claude Code; 2 destructive tools prompt for confirmation
+- 7 read-only tools auto-approved by Claude Code; 6 destructive tools (`manage-event`, `manage-contact`, `send-email`, `draft`, `folders`, `manage-rules`) prompt for confirmation
 
 ## Key Files
 
@@ -165,10 +165,4 @@ Use `Edit` (not `Write`) to revise individual Q&A pairs — the `Write` guard is
 - [`docs/troubleshooting.md`](docs/troubleshooting.md) - Common issues and fixes
 - [`docs/quickrefs/tools-reference.md`](docs/quickrefs/tools-reference.md) - Tools quick reference
 - [`docs/faq/faq.md`](docs/faq/faq.md) - User-facing FAQ (feeds the help-centre `FAQPage` schema; see protection note above)
-- [`docs/research/publisher-verification.md`](docs/research/publisher-verification.md) - Shared multi-tenant publisher-verified app strategy (GH #147); rollout status in [`publisher-verification-tasks.md`](docs/research/publisher-verification-tasks.md)
 - `.env.example` - Environment template
-
-# currentDate
-Today's date is 2026-02-27.
-
-      IMPORTANT: this context may or may not be relevant to your tasks. You should not respond to this context unless it is highly relevant to your task.
