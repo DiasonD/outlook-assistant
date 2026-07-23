@@ -13,7 +13,7 @@ const calendarTools = [
   {
     name: 'list-events',
     description:
-      'List upcoming calendar events for the signed-in user (read-only). Returns an array of events with id, subject, start/end, attendees, location, organiser, and webLink. Use `count` (default 10, max 50) to control page size; this tool does not filter — use the Outlook UI or specific date ranges via Graph for filtered queries. Times are returned in the configured timezone (default Australia/Melbourne; override with `OUTLOOK_DEFAULT_TIMEZONE`).',
+      'List upcoming calendar events for the signed-in user (read-only). Returns an array of events with id, subject, start/end, attendees, location, organiser, and webLink. Use `count` (default 10, max 50) to control page size; this tool does not filter — use the Outlook UI or specific date ranges via Graph for filtered queries. Each start/end is returned as a canonical UTC ISO-8601 instant (e.g. `2026-04-02T22:00:00.000Z`) followed by a labelled local rendering in the configured display timezone (default Australia/Melbourne; override with `OUTLOOK_DEFAULT_TIMEZONE`) — the UTC value is authoritative, so consumers never have to guess the zone.',
     annotations: {
       title: 'List Calendar Events',
       readOnlyHint: true,

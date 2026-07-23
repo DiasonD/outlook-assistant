@@ -33,11 +33,13 @@ const emailTools = [
   {
     name: 'search-emails',
     description:
-      'Search, list, delta-sync, or thread-group emails — six modes selected by parameters (read-only). With no params: lists recent emails in `folder` (default `inbox`). With `query`/`from`/`to`/`subject`/date filters: full search (combines via OData filter). With `kqlQuery`: raw Keyword Query Language for advanced server-side search. With `deltaMode: true`: returns current state plus a `deltaToken`; pass the token back on the next call for incremental changes only — ideal for inbox monitoring. With `groupByConversation: true`: returns conversation threads. With `conversationId`: returns all messages in a single thread. With `internetMessageId`: looks up a message by its RFC Message-ID header. Personal Outlook.com accounts have limited `$search` support — this tool falls back through OData filters / boolean filters / recent listing automatically, but structured filters (`from`/`subject`/`receivedAfter`/`hasAttachments`/`unreadOnly`) return cleaner results. Returns paged messages with id/subject/from/receivedDateTime/preview by default; use `outputVerbosity` to expand.',
+      'Search, list, delta-sync, or thread-group emails — six modes selected by parameters (read-only). With no params: lists recent emails in `folder` (default `inbox`). With `query`/`from`/`to`/`subject`/date filters: full search (combines via OData filter). With `searchExpression` (deprecated alias `kqlQuery`): a raw Microsoft Graph `$search` expression for advanced server-side search. With `deltaMode: true`: returns current state plus a `deltaToken`; pass the token back on the next call for incremental changes only — ideal for inbox monitoring. With `groupByConversation: true`: returns conversation threads. With `conversationId`: returns all messages in a single thread. With `internetMessageId`: looks up a message by its RFC Message-ID header. Personal Outlook.com accounts have limited `$search` support — this tool falls back through OData filters / boolean filters / recent listing automatically, but structured filters (`from`/`subject`/`receivedAfter`/`hasAttachments`/`unreadOnly`) return cleaner results. Returns paged messages with id/subject/from/receivedDateTime/preview by default; use `outputVerbosity` to expand.',
     annotations: {
       title: 'Search Emails',
       readOnlyHint: true,
-      openWorldHint: false,
+      // openWorldHint: output includes email content authored by external
+      // senders (bodies/previews/threads) — may contain prompt-injection. (#92)
+      openWorldHint: true,
     },
     inputSchema: {
       type: 'object',
@@ -68,10 +70,15 @@ const emailTools = [
           type: 'string',
           description: 'Search query text. Omit for list mode.',
         },
+        searchExpression: {
+          type: 'string',
+          description:
+            'Raw Microsoft Graph `$search` expression for advanced server-side search, e.g. `subject:"invoice"`, `from:github.com`, or `foo OR bar`. Quote your own phrases; a single bare token is auto-quoted. Pair with `searchAllFolders: true` for cross-folder search. Bypasses other search params. NOTE: on personal Outlook.com accounts field-scoped `$search` is best-effort and may return nothing — prefer `query` there (it has progressive fallback).',
+        },
         kqlQuery: {
           type: 'string',
           description:
-            'Raw KQL (Keyword Query Language) query for advanced search. Bypasses other search params.',
+            'DEPRECATED alias for `searchExpression` (this was never full KQL — it is a Graph `$search` expression). Prefer `searchExpression`.',
         },
         folder: {
           type: 'string',
@@ -160,6 +167,7 @@ const emailTools = [
       // If any search params provided, use search handler
       if (
         args.query ||
+        args.searchExpression ||
         args.kqlQuery ||
         args.from ||
         args.to ||
@@ -183,7 +191,8 @@ const emailTools = [
     annotations: {
       title: 'Read Email',
       readOnlyHint: true,
-      openWorldHint: false,
+      // openWorldHint: returns full message body from external senders. (#92)
+      openWorldHint: true,
     },
     inputSchema: {
       type: 'object',
@@ -460,7 +469,9 @@ const emailTools = [
       title: 'Attachments',
       readOnlyHint: false,
       destructiveHint: false,
-      openWorldHint: false,
+      // openWorldHint: action=view returns attachment content supplied by
+      // external senders. (#92)
+      openWorldHint: true,
     },
     inputSchema: {
       type: 'object',
@@ -486,7 +497,7 @@ const emailTools = [
         savePath: {
           type: 'string',
           description:
-            'DEPRECATED alias for `outputDir`. Will be removed in v3.8.0.',
+            'DEPRECATED alias for `outputDir`. Will be removed in a future release.',
         },
       },
       additionalProperties: false,
@@ -521,7 +532,9 @@ const emailTools = [
       title: 'Export Emails',
       readOnlyHint: false,
       destructiveHint: false,
-      openWorldHint: false,
+      // openWorldHint: exports full message/MIME/conversation content from
+      // external senders. (#92)
+      openWorldHint: true,
     },
     inputSchema: {
       type: 'object',

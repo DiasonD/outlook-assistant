@@ -592,3 +592,217 @@ describe('handleSearchEmails — client-side query search', () => {
     expect(result.content[0].text).toContain('No emails found');
   });
 });
+
+// ──────────────────────────────────────────────────
+// handleSearchEmails — cross-folder search (#169 V37-F-2)
+// ──────────────────────────────────────────────────
+describe('handleSearchEmails — cross-folder search (#169 V37-F-2)', () => {
+  test('client-side scan depth is decoupled from result count (scans CLIENT_SCAN_LIMIT, not maxCount*5)', async () => {
+    // The bug: the client-side fallback fetched only maxCount*5 (=50 at the
+    // default count) recent messages. With searchAllFolders that window spans
+    // every folder, so inbox matches got pushed out and cross-folder returned
+    // FEWER results than inbox-only. The scan budget must be independent of
+    // the requested result count.
+    const githubEmail = mockEmail({
+      id: 'gh-1',
+      subject: '[GitHub] Your fine-grained personal access token expired',
+      bodyPreview: 'A token on your account has expired.',
+    });
+
+    callGraphAPIPaginated
+      // combined-search ($search) empty
+      .mockResolvedValueOnce({ value: [] })
+      // single-term query (AND contains(subject)) empty
+      .mockResolvedValueOnce({ value: [] })
+      // client-side scan returns the match
+      .mockResolvedValueOnce({ value: [githubEmail] });
+
+    const result = await handleSearchEmails({
+      query: 'github token',
+      searchAllFolders: true,
+    });
+
+    // Match is found across folders.
+    expect(result._meta.returned).toBe(1);
+    expect(result.content[0].text).toContain('[GitHub]');
+    expect(result._meta.searchMetadata.finalStrategy).toBe('client-side-query');
+
+    // The client-side scan (3rd call) targets me/messages with a scan budget
+    // of CLIENT_SCAN_LIMIT (default 500), NOT the requested count (10) * 5.
+    const scanCall = callGraphAPIPaginated.mock.calls[2];
+    expect(scanCall[2]).toBe('me/messages'); // cross-folder endpoint
+    expect(scanCall[4]).toBe(500); // maxCount arg = CLIENT_SCAN_LIMIT
+    // Scan coverage is surfaced so clients can detect truncation.
+    expect(result._meta.searchMetadata.scanLimit).toBe(500);
+    expect(result._meta.searchMetadata.truncated).toBe(false);
+  });
+
+  test('multi-word query builds an AND of per-word contains(subject) (non-contiguous match)', async () => {
+    callGraphAPIPaginated
+      // combined-search empty
+      .mockResolvedValueOnce({ value: [] })
+      // single-term query — inspect its $filter, then return empty
+      .mockResolvedValueOnce({ value: [] })
+      // client-side scan empty (we only care about the single-term params here)
+      .mockResolvedValueOnce({ value: [] });
+
+    await handleSearchEmails({ query: 'github token' });
+
+    // The single-term 'query' call (2nd) must AND a contains() per word so
+    // "github token" can match "[GitHub] ... token" where words are apart.
+    const singleTermParams = callGraphAPIPaginated.mock.calls[1][3];
+    expect(singleTermParams.$filter).toBe(
+      "contains(subject, 'github') and contains(subject, 'token')"
+    );
+  });
+
+  test('labels the scope as "all folders" (not "inbox") when searchAllFolders=true', async () => {
+    // No results anywhere → the no-results copy must not claim "inbox".
+    callGraphAPIPaginated.mockResolvedValue({ value: [] });
+
+    const result = await handleSearchEmails({
+      query: 'nothing matches this',
+      searchAllFolders: true,
+    });
+
+    expect(result._meta.returned).toBe(0);
+    expect(result.content[0].text).toContain('all folders');
+    expect(result.content[0].text).not.toContain('in "inbox"');
+  });
+});
+
+// ──────────────────────────────────────────────────
+// handleSearchEmails — searchExpression rename (#169)
+// ──────────────────────────────────────────────────
+describe('handleSearchEmails — searchExpression alias (#169)', () => {
+  test('searchExpression drives the raw-$search branch (same as kqlQuery)', async () => {
+    callGraphAPIPaginated.mockResolvedValue({ value: [] });
+
+    await handleSearchEmails({ searchExpression: 'from:github.com' });
+
+    const [, , , params] = callGraphAPIPaginated.mock.calls[0];
+    expect(params.$search).toBe('from:github.com');
+  });
+
+  test('searchExpression takes precedence over the deprecated kqlQuery alias', async () => {
+    callGraphAPIPaginated.mockResolvedValue({ value: [] });
+
+    await handleSearchEmails({
+      searchExpression: 'subject:new',
+      kqlQuery: 'subject:old',
+    });
+
+    const [, , , params] = callGraphAPIPaginated.mock.calls[0];
+    expect(params.$search).toBe('subject:new');
+  });
+
+  test('kqlQuery still works as a back-compat alias', async () => {
+    callGraphAPIPaginated.mockResolvedValue({ value: [] });
+
+    const result = await handleSearchEmails({ kqlQuery: 'subject:PR' });
+
+    const [, , , params] = callGraphAPIPaginated.mock.calls[0];
+    expect(params.$search).toBe('subject:PR');
+    expect(result._meta.searchMetadata.finalStrategy).toBe('raw-kql');
+  });
+});
+
+// ──────────────────────────────────────────────────
+// handleSearchEmails — review hardening (#169 code-review fixes)
+// ──────────────────────────────────────────────────
+describe('handleSearchEmails — client-side fallback hardening (#169)', () => {
+  test('client-side fallback honours unreadOnly (does not leak read mail)', async () => {
+    const readInvoice = mockEmail({
+      id: 'read',
+      subject: 'Invoice paid',
+      isRead: true,
+      bodyPreview: 'invoice attached',
+    });
+    const unreadInvoice = mockEmail({
+      id: 'unread',
+      subject: 'Invoice due',
+      isRead: false,
+      bodyPreview: 'invoice attached',
+    });
+
+    callGraphAPIPaginated
+      .mockResolvedValueOnce({ value: [] }) // combined
+      .mockResolvedValueOnce({ value: [] }) // single-term query
+      .mockResolvedValueOnce({ value: [readInvoice, unreadInvoice] }); // scan
+
+    const result = await handleSearchEmails({
+      query: 'invoice',
+      unreadOnly: true,
+    });
+
+    // Both match "invoice", but only the UNREAD one survives the boolean filter.
+    expect(result._meta.returned).toBe(1);
+    expect(result.content[0].text).toContain('Invoice due');
+    expect(result.content[0].text).not.toContain('Invoice paid');
+  });
+
+  test('discloses scan coverage in searchMetadata when a bounded scan matches nothing', async () => {
+    const nonMatching = mockEmail({
+      id: 'x',
+      subject: 'Newsletter',
+      bodyPreview: 'weekly news',
+    });
+
+    callGraphAPIPaginated
+      .mockResolvedValueOnce({ value: [] }) // combined
+      .mockResolvedValueOnce({ value: [] }) // single-term
+      .mockResolvedValueOnce({ value: [nonMatching] }); // scan — no 'zebra'
+
+    const result = await handleSearchEmails({
+      query: 'zebra',
+      searchAllFolders: true,
+    });
+
+    expect(result._meta.returned).toBe(0);
+    expect(result._meta.searchMetadata.finalStrategy).toBe('no-results');
+    // Coverage disclosed even though nothing matched.
+    expect(result._meta.searchMetadata.scanLimit).toBe(500);
+    expect(result._meta.searchMetadata.candidatesScanned).toBe(1);
+    expect(result._meta.searchMetadata.truncated).toBe(false);
+  });
+
+  test('does not double-scan when the client-side fetch itself throws', async () => {
+    callGraphAPIPaginated
+      .mockResolvedValueOnce({ value: [] }) // combined
+      .mockResolvedValueOnce({ value: [] }) // single-term query
+      .mockRejectedValueOnce(new Error('network blip')); // scan throws
+
+    const result = await handleSearchEmails({ query: 'anything' });
+
+    // combined + single-term + exactly ONE client-side attempt = 3 (was 4).
+    expect(callGraphAPIPaginated).toHaveBeenCalledTimes(3);
+    expect(result._meta.returned).toBe(0);
+    const strategies = result._meta.searchMetadata.strategiesAttempted;
+    expect(strategies.filter((s) => s === 'client-side-query')).toHaveLength(1);
+  });
+
+  test('treats a whitespace-only query as no filter (not a match-all scan)', async () => {
+    const recent = [mockEmail({ id: 'r1' }), mockEmail({ id: 'r2' })];
+    callGraphAPIPaginated.mockResolvedValue({ value: recent });
+
+    const result = await handleSearchEmails({ query: '   ' });
+
+    expect(result._meta.returned).toBe(2);
+    const strategies = result._meta.searchMetadata.strategiesAttempted;
+    expect(strategies).not.toContain('single-term-query');
+    expect(strategies).not.toContain('client-side-query');
+  });
+
+  test('treats a whitespace-only searchExpression as absent (no $search: "")', async () => {
+    callGraphAPIPaginated.mockResolvedValue({
+      value: [mockEmail({ id: 'r1' })],
+    });
+
+    const result = await handleSearchEmails({ searchExpression: '   ' });
+
+    const firstParams = callGraphAPIPaginated.mock.calls[0][3];
+    expect(firstParams.$search).not.toBe('""');
+    const strategies = result._meta.searchMetadata.strategiesAttempted;
+    expect(strategies).not.toContain('raw-kql');
+  });
+});

@@ -14,6 +14,22 @@ const {
 } = require('../utils/response-formatter');
 const { getEmailFields } = require('../utils/field-presets');
 
+// Upper bound on how many recent messages the client-side fallback scans
+// before giving up. Deliberately DECOUPLED from the requested result count so
+// that broadening the scope (searchAllFolders → me/messages) doesn't shrink
+// coverage — a maxCount*5 window spread across every folder used to drop inbox
+// matches that an inbox-only window retained. Surfaced as `truncated` in
+// searchMetadata when the budget is exhausted. Override with
+// OUTLOOK_SEARCH_SCAN_LIMIT. (#169 V37-F-2)
+const _parsedScanLimit = Number.parseInt(
+  process.env.OUTLOOK_SEARCH_SCAN_LIMIT || '',
+  10
+);
+const CLIENT_SCAN_LIMIT =
+  Number.isSafeInteger(_parsedScanLimit) && _parsedScanLimit > 0
+    ? Math.min(_parsedScanLimit, 5000)
+    : 500;
+
 /**
  * Search emails handler
  * @param {object} args - Tool arguments
@@ -40,7 +56,7 @@ async function handleSearchEmails(args) {
   const requestedCount =
     args.count ?? args.maxResults ?? DEFAULT_LIMITS.searchEmails;
   const verbosity = args.outputVerbosity || VERBOSITY.STANDARD;
-  const query = args.query || '';
+  const query = (args.query || '').trim();
   const from = args.from || '';
   const to = args.to || '';
   const subject = args.subject || '';
@@ -49,7 +65,11 @@ async function handleSearchEmails(args) {
   const receivedAfter = args.receivedAfter || '';
   const receivedBefore = args.receivedBefore || '';
   const searchAllFolders = args.searchAllFolders || false;
-  const kqlQuery = args.kqlQuery || ''; // Raw KQL for advanced users
+  // `searchExpression` is the accurate name — it's a Microsoft Graph $search
+  // expression, not full KQL. `kqlQuery` is retained as a deprecated alias.
+  // Trim so a whitespace-only value doesn't send `$search: '""'`. (#169)
+  const kqlQuery =
+    (args.searchExpression || '').trim() || (args.kqlQuery || '').trim();
 
   // Select fields based on verbosity
   const selectFields = getEmailFields(
@@ -80,7 +100,9 @@ async function handleSearchEmails(args) {
       selectFields
     );
 
-    return formatSearchResults(response, folder, verbosity);
+    // Label the scope accurately — a cross-folder search is not "inbox". (#169)
+    const scopeLabel = searchAllFolders ? 'all folders' : folder;
+    return formatSearchResults(response, scopeLabel, verbosity);
   } catch (error) {
     // Handle authentication errors
     if (error.message === 'Authentication required') {
@@ -126,6 +148,9 @@ async function progressiveSearch(
 ) {
   // Track search strategies attempted
   const searchAttempts = [];
+  // Populated by the client-side fallback with its scan coverage so the final
+  // no-results response can still disclose whether the scan was bounded. (#169)
+  const scanState = {};
 
   // 0. If raw KQL query provided, use it directly. The kqlQuery branch
   //    *terminates* — if Graph returns 0 (or throws), we surface that
@@ -260,151 +285,102 @@ async function progressiveSearch(
   const searchPriority = ['from', 'to', 'subject', 'query'];
 
   for (const term of searchPriority) {
-    if (searchTerms[term]) {
-      try {
+    if (!searchTerms[term]) {
+      continue;
+    }
+
+    // 2a. Server-side single-term attempt (isolated try/catch — a failure
+    // here just falls through to the one client-side fallback below).
+    try {
+      console.error(
+        `Attempting search with only ${term}: "${searchTerms[term]}"`
+      );
+      searchAttempts.push(`single-term-${term}`);
+
+      const simplifiedParams = {
+        $top: Math.min(50, maxCount),
+        $select: selectFields,
+      };
+
+      // Use $filter for from/to/subject (more reliable on personal accounts),
+      // $search for free-text query only.
+      // NOTE: $filter and $orderby cannot be used together on mailbox - Graph API limitation
+      if (term === 'from') {
+        simplifiedParams.$filter = buildFromFilter(searchTerms[term]);
+      } else if (term === 'to') {
+        simplifiedParams.$filter = buildToFilter(searchTerms[term]);
+      } else if (term === 'subject') {
+        // Use $filter with contains() — $search silently fails on personal MS accounts
+        simplifiedParams.$filter = `contains(subject, '${searchTerms[term].replace(/'/g, "''")}')`;
+      } else if (term === 'query') {
+        // On personal accounts, $search fails with 503. Use $filter with
+        // contains(subject) as a best-effort fallback for free-text queries.
+        // Split multi-word queries and AND a contains(subject) per word so a
+        // query like "github token" matches a subject where the words are
+        // non-contiguous ("[GitHub] ... personal access token"); single
+        // words behave exactly as before. (#169)
+        const queryWords = searchTerms[term]
+          .trim()
+          .split(/\s+/)
+          .filter(Boolean);
+        simplifiedParams.$filter = queryWords
+          .map((w) => `contains(subject, '${w.replace(/'/g, "''")}')`)
+          .join(' and ');
+      }
+
+      // Add boolean filters if applicable
+      addBooleanFilters(simplifiedParams, filterTerms);
+
+      const response = await callGraphAPIPaginated(
+        accessToken,
+        'GET',
+        endpoint,
+        simplifiedParams,
+        maxCount
+      );
+      if (response.value && response.value.length > 0) {
         console.error(
-          `Attempting search with only ${term}: "${searchTerms[term]}"`
+          `Search with ${term} successful: found ${response.value.length} results`
         );
-        searchAttempts.push(`single-term-${term}`);
-
-        const simplifiedParams = {
-          $top: Math.min(50, maxCount),
-          $select: selectFields,
+        response._searchInfo = {
+          attemptsCount: searchAttempts.length,
+          strategies: searchAttempts,
+          originalTerms: searchTerms,
+          filterTerms: filterTerms,
         };
+        return response;
+      }
+    } catch (error) {
+      console.error(`Search with ${term} failed: ${error.message}`);
+      // Fall through to the client-side fallback below.
+    }
 
-        // Use $filter for from/to/subject (more reliable on personal accounts),
-        // $search for free-text query only.
-        // NOTE: $filter and $orderby cannot be used together on mailbox - Graph API limitation
-        if (term === 'from') {
-          simplifiedParams.$filter = buildFromFilter(searchTerms[term]);
-        } else if (term === 'to') {
-          simplifiedParams.$filter = buildToFilter(searchTerms[term]);
-        } else if (term === 'subject') {
-          // Use $filter with contains() — $search silently fails on personal MS accounts
-          simplifiedParams.$filter = `contains(subject, '${searchTerms[term].replace(/'/g, "''")}')`;
-        } else if (term === 'query') {
-          // On personal accounts, $search fails with 503. Use $filter with
-          // contains(subject) as a best-effort fallback for free-text queries.
-          simplifiedParams.$filter = `contains(subject, '${searchTerms[term].replace(/'/g, "''")}')`;
-        }
-
-        // Add boolean filters if applicable
-        addBooleanFilters(simplifiedParams, filterTerms);
-
-        const response = await callGraphAPIPaginated(
+    // 2b. Client-side fallback — runs EXACTLY ONCE per term whether the
+    // server-side attempt returned zero results OR threw. Only 'to' and
+    // 'query' have a local matcher. Keeping this outside the server-side
+    // try/catch prevents the double-scan/double-label a throw inside a
+    // success-path fallback would otherwise cause. (#169)
+    if (term === 'to' || term === 'query') {
+      console.error(
+        `${term} unsatisfied server-side, trying client-side filtering`
+      );
+      searchAttempts.push(`client-side-${term}`);
+      try {
+        const fallback = await runClientSideFallback(
           accessToken,
-          'GET',
           endpoint,
-          simplifiedParams,
-          maxCount
+          maxCount,
+          searchAttempts,
+          searchTerms,
+          filterTerms,
+          term,
+          scanState
         );
-        if (response.value && response.value.length > 0) {
-          console.error(
-            `Search with ${term} successful: found ${response.value.length} results`
-          );
-          response._searchInfo = {
-            attemptsCount: searchAttempts.length,
-            strategies: searchAttempts,
-            originalTerms: searchTerms,
-            filterTerms: filterTerms,
-          };
-          return response;
-        }
-
-        // Client-side fallback for 'to' filter — toRecipients/any() lambda
-        // returns 0 results on personal accounts even when emails exist
-        if (term === 'to') {
-          console.error(
-            'to filter returned 0 results, trying client-side filtering'
-          );
-          searchAttempts.push('client-side-to');
-          const messages = await fetchForClientSideFilter(
-            accessToken,
-            endpoint,
-            maxCount
-          );
-          const matched = filterToClientSide(messages, searchTerms[term]);
-          if (matched.length > 0) {
-            console.error(
-              `Client-side to filter matched ${matched.length} of ${messages.length} messages`
-            );
-            return { value: matched.slice(0, maxCount) };
-          }
-        }
-
-        // Client-side fallback for 'query' — search bodyPreview, subject, from
-        if (term === 'query') {
-          console.error(
-            'query contains(subject) returned 0 results, trying client-side body search'
-          );
-          searchAttempts.push('client-side-query');
-          const messages = await fetchForClientSideFilter(
-            accessToken,
-            endpoint,
-            maxCount
-          );
-          const matched = filterQueryClientSide(messages, searchTerms[term]);
-          if (matched.length > 0) {
-            console.error(
-              `Client-side query matched ${matched.length} of ${messages.length} messages`
-            );
-            return { value: matched.slice(0, maxCount) };
-          }
-        }
-      } catch (error) {
-        console.error(`Search with ${term} failed: ${error.message}`);
-
-        // Client-side fallback for 'to' when API throws (e.g. InefficientFilter)
-        if (term === 'to') {
-          try {
-            console.error(
-              'to filter threw error, trying client-side filtering'
-            );
-            searchAttempts.push('client-side-to');
-            const messages = await fetchForClientSideFilter(
-              accessToken,
-              endpoint,
-              maxCount
-            );
-            const matched = filterToClientSide(messages, searchTerms[term]);
-            if (matched.length > 0) {
-              console.error(
-                `Client-side to filter matched ${matched.length} of ${messages.length} messages`
-              );
-              return { value: matched.slice(0, maxCount) };
-            }
-          } catch (fallbackError) {
-            console.error(
-              `Client-side to fallback also failed: ${fallbackError.message}`
-            );
-          }
-        }
-
-        // Client-side fallback for 'query' when API throws
-        if (term === 'query') {
-          try {
-            console.error(
-              'query filter threw error, trying client-side body search'
-            );
-            searchAttempts.push('client-side-query');
-            const messages = await fetchForClientSideFilter(
-              accessToken,
-              endpoint,
-              maxCount
-            );
-            const matched = filterQueryClientSide(messages, searchTerms[term]);
-            if (matched.length > 0) {
-              console.error(
-                `Client-side query matched ${matched.length} of ${messages.length} messages`
-              );
-              return { value: matched.slice(0, maxCount) };
-            }
-          } catch (fallbackError) {
-            console.error(
-              `Client-side query fallback also failed: ${fallbackError.message}`
-            );
-          }
-        }
+        if (fallback) return fallback;
+      } catch (fallbackError) {
+        console.error(
+          `Client-side ${term} fallback also failed: ${fallbackError.message}`
+        );
       }
     }
   }
@@ -506,6 +482,13 @@ async function progressiveSearch(
         originalTerms: searchTerms,
         filterTerms: filterTerms,
         noResults: true,
+        // Disclose scan coverage if a client-side fallback ran but matched
+        // nothing — otherwise a bounded scan reads as a definitive "none". (#169)
+        ...(scanState.candidatesScanned !== undefined && {
+          candidatesScanned: scanState.candidatesScanned,
+          scanLimit: scanState.scanLimit,
+          truncated: scanState.truncated,
+        }),
       },
     };
   }
@@ -639,17 +622,22 @@ function filterQueryClientSide(messages, queryText) {
 }
 
 /**
- * Fetch recent messages for client-side filtering fallback.
- * Uses the 'search' field preset which includes toRecipients and bodyPreview.
+ * Fetch a window of recent messages for the client-side filtering fallback.
+ * Uses the 'search' field preset (includes toRecipients and bodyPreview).
+ *
+ * Scan depth is bounded by `scanLimit` and decoupled from the requested result
+ * count (see CLIENT_SCAN_LIMIT). Returns scan metadata so callers can surface
+ * whether coverage was truncated. (#169 V37-F-2)
+ *
  * @param {string} accessToken - Access token
  * @param {string} endpoint - API endpoint
- * @param {number} maxCount - Maximum results to fetch
- * @returns {Promise<Array>} - Array of message objects
+ * @param {number} scanLimit - Max messages to scan
+ * @returns {Promise<{messages: Array, candidatesScanned: number, truncated: boolean}>}
  */
-async function fetchForClientSideFilter(accessToken, endpoint, maxCount) {
+async function fetchRecentCandidates(accessToken, endpoint, scanLimit) {
   const searchFields = getEmailFields('search');
   const params = {
-    $top: Math.min(200, maxCount * 5),
+    $top: Math.min(50, scanLimit),
     $select: searchFields,
     $orderby: 'receivedDateTime desc',
   };
@@ -658,9 +646,113 @@ async function fetchForClientSideFilter(accessToken, endpoint, maxCount) {
     'GET',
     endpoint,
     params,
-    Math.min(200, maxCount * 5)
+    scanLimit
   );
-  return response.value || [];
+  const messages = response.value || [];
+  return {
+    messages,
+    candidatesScanned: messages.length,
+    // Filled the scan budget → older unscanned messages may also match.
+    truncated: messages.length >= scanLimit,
+  };
+}
+
+/**
+ * Re-apply active boolean/date filters to a client-side result set so the
+ * local fallback honours the same constraints the server-side $filter path
+ * enforces (hasAttachments, unreadOnly, receivedAfter/Before). The 'search'
+ * field preset includes hasAttachments/isRead/receivedDateTime. (#169)
+ * @param {Array} messages - Messages already matched by the term filter
+ * @param {object} filterTerms - Active boolean/date filters
+ * @returns {Array} - Messages that also satisfy the boolean/date filters
+ */
+function applyBooleanDateFilters(messages, filterTerms) {
+  const after = filterTerms.receivedAfter
+    ? Date.parse(filterTerms.receivedAfter)
+    : null;
+  const before = filterTerms.receivedBefore
+    ? Date.parse(filterTerms.receivedBefore)
+    : null;
+  return messages.filter((m) => {
+    if (filterTerms.hasAttachments === true && m.hasAttachments !== true) {
+      return false;
+    }
+    if (filterTerms.unreadOnly === true && m.isRead !== false) {
+      return false;
+    }
+    if (after !== null && !Number.isNaN(after)) {
+      const rec = Date.parse(m.receivedDateTime);
+      if (Number.isNaN(rec) || rec < after) return false;
+    }
+    if (before !== null && !Number.isNaN(before)) {
+      const rec = Date.parse(m.receivedDateTime);
+      if (Number.isNaN(rec) || rec > before) return false;
+    }
+    return true;
+  });
+}
+
+/**
+ * Run a client-side fallback scan for a 'to' or 'query' term: fetch a bounded
+ * window of recent messages, filter locally, and (on a match) return a result
+ * carrying full `_searchInfo` including scan metadata. Returns null when nothing
+ * matches so the caller can continue its strategy ladder. (#169)
+ *
+ * @param {string} accessToken - Access token
+ * @param {string} endpoint - API endpoint
+ * @param {number} maxCount - Requested result count
+ * @param {string[]} searchAttempts - Accumulated strategy labels
+ * @param {object} searchTerms - Search terms
+ * @param {object} filterTerms - Filter terms
+ * @param {'to'|'query'} kind - Which term to filter on
+ * @returns {Promise<object|null>}
+ */
+async function runClientSideFallback(
+  accessToken,
+  endpoint,
+  maxCount,
+  searchAttempts,
+  searchTerms,
+  filterTerms,
+  kind,
+  scanState
+) {
+  const { messages, candidatesScanned, truncated } =
+    await fetchRecentCandidates(accessToken, endpoint, CLIENT_SCAN_LIMIT);
+  // Record scan coverage even when nothing matches, so the eventual
+  // no-results response can still disclose that the scan was bounded. (#169)
+  if (scanState) {
+    scanState.candidatesScanned = candidatesScanned;
+    scanState.scanLimit = CLIENT_SCAN_LIMIT;
+    scanState.truncated = truncated;
+  }
+  // Apply the term matcher, then RE-APPLY any active boolean/date filters —
+  // the server-side path enforces these via $filter, so the local fallback
+  // must too, otherwise e.g. `unreadOnly:true` would leak read mail while
+  // searchMetadata still claims filterApplied. (#169)
+  const termMatched =
+    kind === 'to'
+      ? filterToClientSide(messages, searchTerms.to)
+      : filterQueryClientSide(messages, searchTerms.query);
+  const matched = applyBooleanDateFilters(termMatched, filterTerms);
+  if (matched.length === 0) {
+    return null;
+  }
+  console.error(
+    `Client-side ${kind} matched ${matched.length} of ${messages.length} scanned messages`
+  );
+  return {
+    value: matched.slice(0, maxCount),
+    _searchInfo: {
+      attemptsCount: searchAttempts.length,
+      strategies: searchAttempts,
+      originalTerms: searchTerms,
+      filterTerms,
+      candidatesScanned,
+      scanLimit: CLIENT_SCAN_LIMIT,
+      truncated,
+    },
+  };
 }
 
 /**
@@ -822,6 +914,13 @@ function formatSearchResults(response, folder, verbosity) {
       finalStrategy: finalStrategy,
       filterApplied: !response._searchInfo.noResults,
       originalFilters: response._searchInfo.originalTerms,
+      // Surface client-side scan coverage so callers can tell when a fallback
+      // result may be incomplete (older matches beyond the scan budget). (#169)
+      ...(response._searchInfo.candidatesScanned !== undefined && {
+        candidatesScanned: response._searchInfo.candidatesScanned,
+        scanLimit: response._searchInfo.scanLimit,
+        truncated: response._searchInfo.truncated,
+      }),
     };
   }
 
@@ -830,9 +929,11 @@ function formatSearchResults(response, folder, verbosity) {
     // Actionable guidance when filters were specified but matched nothing
     if (response._searchInfo?.noResults) {
       const filters = response._searchInfo.originalTerms || {};
+      // Relabel internal keys to the caller-facing param names. (#169)
+      const FILTER_LABELS = { kqlQuery: 'searchExpression' };
       const activeFilters = Object.entries(filters)
         .filter(([, v]) => v)
-        .map(([k]) => k);
+        .map(([k]) => FILTER_LABELS[k] || k);
       const filterDesc =
         activeFilters.length > 0
           ? ` (filters: ${activeFilters.join(', ')})`
@@ -844,7 +945,7 @@ function formatSearchResults(response, folder, verbosity) {
         '- Try `searchAllFolders: true` to search across all folders including Archive\n' +
         '- Specify the correct folder if emails have been moved (use `folders` tool to list folders)\n' +
         '- Use `from` filter instead of `to` (more reliable on personal accounts)\n' +
-        '- Use `kqlQuery` with `searchAllFolders: true` for cross-folder search';
+        '- Use `searchExpression` with `searchAllFolders: true` for cross-folder search';
 
       return {
         content: [{ type: 'text', text }],

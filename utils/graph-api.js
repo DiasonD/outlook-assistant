@@ -90,8 +90,18 @@ async function callGraphAPI(
         headers.Prefer = 'IdType="ImmutableId"';
       }
 
-      // Merge any extra headers (caller overrides take precedence)
+      // Merge any extra headers (caller overrides take precedence). `Prefer`
+      // is multi-valued in HTTP (comma-separated); combine both values rather
+      // than letting a caller Prefer (e.g. outlook.timezone) clobber the global
+      // immutable-IDs Prefer, or vice versa.
+      const combinedPrefer =
+        headers.Prefer && extraHeaders.Prefer
+          ? `${headers.Prefer}, ${extraHeaders.Prefer}`
+          : null;
       Object.assign(headers, extraHeaders);
+      if (combinedPrefer) {
+        headers.Prefer = combinedPrefer;
+      }
 
       const options = {
         method: method,

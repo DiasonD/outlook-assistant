@@ -5,7 +5,7 @@ tags:
 
 # Tools Reference - Outlook Assistant
 
-Quick reference for all 22 MCP tools across 9 modules. Each tool includes MCP safety annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`).
+Quick reference for all 22 MCP tools across 9 modules. Each tool includes MCP safety annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`).
 
 ## Authentication (1 tool)
 
@@ -17,7 +17,7 @@ Quick reference for all 22 MCP tools across 9 modules. Each tool includes MCP sa
 
 | Tool | Description | Safety | Key Parameters |
 |------|-------------|--------|----------------|
-| `search-emails` | Search, list, delta sync, conversations | read-only | `query`, `from`, `to`, `folder`, `deltaMode`, `conversationId`, `groupByConversation`, `internetMessageId` |
+| `search-emails` | Search, list, delta sync, conversations | read-only | `query`, `from`, `to`, `folder` (name or nested path), `searchAllFolders`, `searchExpression`, `deltaMode`, `conversationId`, `groupByConversation`, `internetMessageId` |
 | `read-email` | Read content or forensic headers | read-only | `id`, `headersMode`, `groupByType`, `importantOnly` |
 | `send-email` | Send email with safety controls | **destructive** | `to`, `subject`, `body`, `dryRun`, `checkRecipients`, `cc`, `bcc`, `importance` |
 | `draft` | Create, update, send, delete, reply, forward drafts | **destructive** | `action` (required), `id`, `to`, `subject`, `body`, `comment`, `dryRun`, `checkRecipients` |
@@ -31,13 +31,13 @@ Quick reference for all 22 MCP tools across 9 modules. Each tool includes MCP sa
 | Mode | Trigger | Description |
 |------|---------|-------------|
 | List | No query params | Lists recent emails (like old `list-emails`) |
-| Search | `query`, `from`, `to`, etc. | Full search with filters and KQL |
+| Search | `query`, `from`, `to`, etc. | Full search with OData filters; `searchExpression` for a raw Graph `$search` expression; `searchAllFolders: true` for cross-folder |
 | Delta | `deltaMode: true` | Incremental sync, returns `deltaToken` |
 | Conversation list | `groupByConversation: true` | Groups by thread |
 | Conversation get | `conversationId` | All messages in a thread |
 | Message-ID lookup | `internetMessageId` | Find by RFC Message-ID header |
 
-> **Personal accounts**: The `query` and `kqlQuery` parameters use Microsoft's `$search` API which has limited support on personal Outlook.com accounts. Outlook Assistant handles this automatically with progressive search fallback — if `$search` returns no results, it tries OData filters, boolean filters, and recent message listing. For the most direct results on personal accounts, use structured filters (`from`, `subject`, `to`, `receivedAfter`, `hasAttachments`, `unreadOnly`).
+> **Personal accounts**: The `query` and raw `searchExpression` (formerly `kqlQuery`, kept as a deprecated alias) parameters use Microsoft's `$search` API, which has limited support on personal Outlook.com accounts — field-scoped raw `$search` (e.g. `subject:"…"`) may return nothing there. `query` handles this with progressive fallback (OData filters, boolean filters, recent listing); for the most reliable results on personal accounts, use structured filters (`from`, `subject`, `to`, `receivedAfter`, `hasAttachments`, `unreadOnly`). Cross-folder search (`searchAllFolders: true`) returns a superset of inbox-only results.
 
 > **Delta sync** is designed for inbox monitoring workflows. The first call returns current emails and a `deltaToken`; subsequent calls with that token return only new, modified, and deleted messages. See [Monitor Inbox with Delta Sync](../how-to/ai-agents/monitor-inbox-with-delta-sync.md).
 
@@ -82,7 +82,7 @@ Quick reference for all 22 MCP tools across 9 modules. Each tool includes MCP sa
 
 | Tool | Description | Safety | Key Parameters |
 |------|-------------|--------|----------------|
-| `list-events` | List upcoming events | read-only | `count` |
+| `list-events` | List upcoming events (times as canonical UTC ISO-8601 + labelled local) | read-only | `count` |
 | `create-event` | Create new event | moderate write | `subject`, `start`, `end`, `attendees`, `body`. Times use configured timezone (default: Australia/Melbourne; override with `OUTLOOK_DEFAULT_TIMEZONE` env var) — omit `Z` suffix for local time |
 | `manage-event` | Update, decline, cancel, or delete | **destructive** | `action` (`update`/`decline`/`cancel`/`delete`), `eventId` (or alias `id`), `comment` (decline/cancel), `subject`/`start`/`end`/`attendees`/`body`/`location`/`isOnlineMeeting`/`sensitivity`/`showAs`/`importance`/`categories`/`reminderMinutesBeforeStart` (update only — only the fields you pass are changed), `dryRun` (preview the PATCH without applying it) |
 
@@ -90,7 +90,7 @@ Quick reference for all 22 MCP tools across 9 modules. Each tool includes MCP sa
 
 | Tool | Actions | Safety | Key Parameters |
 |------|---------|--------|----------------|
-| `folders` | `list` (default), `create`, `move`, `stats`, `delete` | **destructive** | `name`, `emailIds`, `targetFolder`, `folder`, `folderId`, `folderName`, `outputVerbosity` |
+| `folders` | `list` (default), `create`, `move`, `stats`, `delete` | **destructive** | `name`, `parentFolder`/`parentFolderId` (create), `emailIds`, `targetFolder`/`targetFolderId` (move), `folder`/`folderId` (stats), `folderName`/`folderId` (delete), `outputVerbosity`. Folders addressable by nested path (`Parent/Child`) or ID; `list` shows full paths + IDs |
 
 ## Rules (1 tool)
 
@@ -138,6 +138,8 @@ Quick reference for all 22 MCP tools across 9 modules. Each tool includes MCP sa
 | **Destructive** (5) | `send-email`, `draft`, `manage-event`, `folders`, `manage-rules` | Client prompts for confirmation |
 | **Idempotent** (2) | `update-email`, `mailbox-settings` | Safe to retry |
 | **Moderate write** (8) | All others | Normal approval flow |
+
+> **`openWorldHint: true`** is set on tools whose output can carry content authored by external/untrusted parties — `search-emails`, `read-email`, `search-people`, `access-shared-mailbox`, `attachments`, `export`, `send-email`, `draft` — signalling MCP clients to apply appropriate caution (e.g. prompt-injection defences).
 
 ## send-email Safety Controls
 

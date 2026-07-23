@@ -1,6 +1,6 @@
 # CLAUDE.md - Outlook Assistant
 
-MCP server for Microsoft Outlook via Graph API (v3.8.0). 22 tools across 9 modules.
+MCP server for Microsoft Outlook via Graph API (v3.9.0). 22 tools across 9 modules.
 
 ## Commands
 
@@ -38,7 +38,7 @@ Module layout, file organisation, and the v1→v3 tool-consolidation map live in
 
 ## Safety Controls
 
-- **MCP annotations** on all 22 tools (`readOnlyHint`, `destructiveHint`, `idempotentHint`)
+- **MCP annotations** on all 22 tools (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`). `openWorldHint: true` on tools that surface external-sender content (`search-emails`, `read-email`, `search-people`, `access-shared-mailbox`, `attachments`, `export`) (#92)
 - **get-mail-tips**: pre-send recipient validation (out-of-office, mailbox full, delivery restrictions)
 - **send-email**: `dryRun` param, `checkRecipients` param (mail tips), session rate limiting (`OUTLOOK_MAX_EMAILS_PER_SESSION`), recipient allowlist (`OUTLOOK_ALLOWED_RECIPIENTS`)
 - **draft**: `dryRun` on create, `checkRecipients` (mail tips), recipient allowlist, rate limiting. Send action shares limit with `send-email`.
@@ -160,7 +160,7 @@ Use `Edit` (not `Write`) to revise individual Q&A pairs — the `Write` guard is
 ## See Also
 
 - [`README.md`](README.md) - Full documentation, Azure setup, tool reference
-- [`ROADMAP.md`](ROADMAP.md) - Active milestones (v3.7.5, v3.8.0, v3.9.0) and recent releases
+- [`ROADMAP.md`](ROADMAP.md) - Active milestones (v3.7.5, v3.8.x, v3.10.0+) and recent releases
 - [`docs/architecture.md`](docs/architecture.md) - Module layout, file tree, tool-consolidation map, history
 - [`docs/troubleshooting.md`](docs/troubleshooting.md) - Common issues and fixes
 - [`docs/quickrefs/tools-reference.md`](docs/quickrefs/tools-reference.md) - Tools quick reference
