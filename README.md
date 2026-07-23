@@ -112,7 +112,7 @@ Outlook Assistant works with both personal and work/school Microsoft accounts, b
 ### What Makes This Different
 
 - **Progressive search** — on accounts where Microsoft's `$search` API is limited, Outlook Assistant automatically falls back through up to 4 search strategies to find your emails. Most Graph API wrappers fail silently; this one adapts.
-- **Email forensics** — raw header access for DKIM, SPF, DMARC, delivery chain, X-Mailer, X-Originating-IP, and spam scores. Returns the full data so you can investigate phishing, audit compliance, or trace delivery issues. (Auto-verdict is on the v3.8.0 roadmap; today the data is surfaced and analysed in-conversation.)
+- **Email forensics** — raw header access for DKIM, SPF, DMARC, delivery chain, X-Mailer, X-Originating-IP, and spam scores. Returns the full data so you can investigate phishing, audit compliance, or trace delivery issues. (Auto-verdict is on the roadmap; today the data is surfaced and analysed in-conversation.)
 - **Delta sync** — incremental inbox monitoring returns only what changed since your last check, with tokens for continuous polling. Designed for agent workflows that need to watch a mailbox.
 - **Batch operations** — flag, move, export, or categorise multiple emails in a single call. Search-driven export lets you batch-export results without collecting IDs manually.
 - **Pre-send intelligence** — check recipients for out-of-office, full mailbox, delivery restrictions, and moderation status before sending — no other Outlook MCP server offers this.

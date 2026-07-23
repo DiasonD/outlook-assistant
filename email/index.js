@@ -497,7 +497,7 @@ const emailTools = [
         savePath: {
           type: 'string',
           description:
-            'DEPRECATED alias for `outputDir`. Will be removed in v3.8.0.',
+            'DEPRECATED alias for `outputDir`. Will be removed in a future release.',
         },
       },
       additionalProperties: false,
