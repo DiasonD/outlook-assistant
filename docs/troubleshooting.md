@@ -8,7 +8,7 @@ Common issues and their fixes. For getting-started guidance, see [`docs/how-to/g
 |-------|----------|
 | `AADSTS7000215` (invalid secret) | Use secret **VALUE**, not Secret ID from Azure |
 | `AADSTS9002331` ("configured for Microsoft Account users only … use /consumers") | Your Azure app is registered as "Personal Microsoft accounts only". Set `OUTLOOK_AUTH_AUDIENCE=consumers` in your MCP client `env` block (v3.8.0+). Single-tenant apps need their tenant GUID; multi-tenant apps can use the default (`common`). |
-| Personal account: sign-in "fails" then hands you a second device code | Expected in v3.8.2+. The auth flow requests the `.Shared` (shared-mailbox) scopes for everyone; personal accounts can't consent to them, so Outlook Assistant detects the rejection and **automatically retries with the base scopes** — enter the second code to finish. No config change needed. Work/school accounts consent on the first try. Token refresh then re-requests only the granted scopes, so the fallback session stays valid. |
+| Personal account: sign-in "fails" then hands you a second device code | Expected. The auth flow requests the `.Shared` (shared-mailbox) scopes for everyone; personal accounts can't consent to them, so Outlook Assistant detects the rejection and **automatically retries with the base scopes** — enter the second code to finish. No config change needed. Work/school accounts consent on the first try. Token refresh then re-requests only the granted scopes, so the fallback session stays valid. |
 | `EADDRINUSE :3333` | `npx kill-port 3333` then restart auth server |
 | Module not found | Run `npm install` |
 | Auth URL doesn't work | Start auth server first: `npm run auth-server` |
