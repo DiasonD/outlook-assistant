@@ -12,7 +12,8 @@ const {
 } = require('../utils/graph-api');
 const { ensureAuthenticated } = require('../auth');
 const { getEmailFields } = require('../utils/field-presets');
-const { buildMailboxPrefix, resolveFolderPath } = require('./folder-utils');
+const { resolveFolderPath } = require('./folder-utils');
+const { buildMailboxPrefix } = require('../utils/mailbox');
 const {
   formatEmailContent,
   formatEmailsAsCSV,

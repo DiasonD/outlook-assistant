@@ -6,10 +6,8 @@
  */
 const { callGraphAPI } = require('../utils/graph-api');
 const { ensureAuthenticated } = require('../auth');
-const {
-  buildMailboxPrefix,
-  resolveFolderRef,
-} = require('../email/folder-utils');
+const { resolveFolder } = require('./resolve');
+const { buildMailboxPrefix } = require('../utils/mailbox');
 const config = require('../config');
 
 const { VERBOSITY, DEFAULT_LIMITS } = config;
@@ -21,6 +19,7 @@ const { VERBOSITY, DEFAULT_LIMITS } = config;
  */
 async function handleGetFolderStats(args) {
   const folderName = args.folder || 'inbox';
+  const folderIdArg = args.folderId || '';
   const verbosity = args.outputVerbosity || VERBOSITY.STANDARD;
   const sharedMailbox = args.sharedMailbox || args.email || null;
   const prefix = buildMailboxPrefix(sharedMailbox);
@@ -28,24 +27,20 @@ async function handleGetFolderStats(args) {
   try {
     const accessToken = await ensureAuthenticated();
 
-    // Resolve folder name (well-known / nested path / custom subfolder / ID)
-    // to a folder ID within the target mailbox (shared or `me`).
-    const folderId = await resolveFolderRef(
-      accessToken,
-      folderName,
-      sharedMailbox
-    );
-
-    if (!folderId) {
+    // Resolve folder (name/path/alias/ID → concrete folder). (#216)
+    let resolved;
+    try {
+      resolved = await resolveFolder(accessToken, {
+        name: folderName,
+        id: folderIdArg,
+        mailbox: sharedMailbox,
+      });
+    } catch (resolveError) {
       return {
-        content: [
-          {
-            type: 'text',
-            text: `Folder "${folderName}" not found.`,
-          },
-        ],
+        content: [{ type: 'text', text: resolveError.message }],
       };
     }
+    const folderId = resolved.id;
 
     // Get folder details with full stats
     const folder = await callGraphAPI(

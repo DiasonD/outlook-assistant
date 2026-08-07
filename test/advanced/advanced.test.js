@@ -73,26 +73,31 @@ describe('handleAccessSharedMailbox', () => {
   });
 
   it('should resolve a well-known folder against the shared mailbox endpoint', async () => {
-    callGraphAPI.mockResolvedValue({ value: mockMessages });
+    callGraphAPI
+      // resolveFolder → well-known lookup, scoped to the shared mailbox
+      .mockResolvedValueOnce({ id: 'archive-id', displayName: 'Archive' })
+      // messages fetch
+      .mockResolvedValueOnce({ value: mockMessages });
 
     await handleAccessSharedMailbox({
       sharedMailbox: 'shared@company.com',
       folder: 'archive',
     });
 
-    // Well-known folders resolve without an extra lookup; the messages call
-    // should hit the shared mailbox archive folder.
+    expect(callGraphAPI.mock.calls[0][2]).toBe(
+      'users/shared@company.com/mailFolders/archive'
+    );
     const messagesCall = callGraphAPI.mock.calls.find(
       (c) => typeof c[2] === 'string' && c[2].endsWith('/messages')
     );
     expect(messagesCall[2]).toBe(
-      'users/shared@company.com/mailFolders/archive/messages'
+      'users/shared@company.com/mailFolders/archive-id/messages'
     );
   });
 
   it('should resolve a custom subfolder name to its ID before reading', async () => {
     callGraphAPI
-      // resolveFolderRef → getFolderIdByName exact filter
+      // resolveFolder → top-level folder listing in the shared mailbox
       .mockResolvedValueOnce({
         value: [{ id: 'archiv-id', displayName: 'Archiv' }],
       })
@@ -113,23 +118,31 @@ describe('handleAccessSharedMailbox', () => {
     );
   });
 
-  it('should use folderId directly without resolution', async () => {
-    callGraphAPI.mockResolvedValueOnce({ value: mockMessages });
+  it('should use folderId directly without a name search', async () => {
+    callGraphAPI
+      // resolveFolder → direct ID lookup (no name/tree search)
+      .mockResolvedValueOnce({
+        id: 'explicit-folder-id',
+        displayName: 'Explicit',
+      })
+      .mockResolvedValueOnce({ value: mockMessages });
 
     await handleAccessSharedMailbox({
       sharedMailbox: 'shared@company.com',
       folderId: 'explicit-folder-id',
     });
 
-    // Only one call (the messages fetch) — no folder resolution lookups.
-    expect(callGraphAPI).toHaveBeenCalledTimes(1);
+    expect(callGraphAPI).toHaveBeenCalledTimes(2);
     expect(callGraphAPI.mock.calls[0][2]).toBe(
+      'users/shared@company.com/mailFolders/explicit-folder-id'
+    );
+    expect(callGraphAPI.mock.calls[1][2]).toBe(
       'users/shared@company.com/mailFolders/explicit-folder-id/messages'
     );
   });
 
   it('should report a helpful error when a custom folder cannot be resolved', async () => {
-    // exact filter empty, top-level list empty → unresolved
+    // top-level list empty → nothing to match, nothing to descend into
     callGraphAPI
       .mockResolvedValueOnce({ value: [] })
       .mockResolvedValueOnce({ value: [] });

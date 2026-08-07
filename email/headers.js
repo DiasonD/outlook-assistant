@@ -6,7 +6,7 @@
  */
 const { callGraphAPI } = require('../utils/graph-api');
 const { ensureAuthenticated } = require('../auth');
-const { buildMailboxPrefix } = require('./folder-utils');
+const { buildMailboxPrefix } = require('../utils/mailbox');
 
 /**
  * Important headers to highlight (in order of relevance)

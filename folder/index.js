@@ -12,7 +12,7 @@ const folderTools = [
   {
     name: 'folders',
     description:
-      "Manage mail folders (tool-level destructiveHint=true because `delete` permanently removes a folder; `list` and `stats` are read-only sub-actions despite the annotation). action=`list` (default) returns the folder tree with id/displayName/parentFolderId (toggle `includeItemCounts` for unread/total, `includeChildren` for hierarchy); pass `sharedMailbox` (or alias `email`) to enumerate a shared/delegated mailbox's folders instead of the signed-in account's. action=`create` makes a new folder at the root (or under `parentFolder`) and returns its id — pass `sharedMailbox` (or alias `email`) to create it inside a shared/delegated mailbox (requires Mail.ReadWrite.Shared). action=`move` relocates emails (`emailIds` array) into `targetFolder` — pass `sharedMailbox` (or alias `email`) to move messages within a shared/delegated mailbox (the folder is resolved and the move performed in that mailbox; requires Mail.ReadWrite.Shared). action=`stats` returns counts (totalItemCount/unreadItemCount) suitable for pagination planning — pair with `outputVerbosity` to limit noise; pass `sharedMailbox` (or alias `email`) to return the shared/delegated mailbox's counts instead of the signed-in account's (requires Mail.Read.Shared). action=`delete` permanently removes a folder and its contents — there is no recycle-bin recovery — pass `sharedMailbox` (or alias `email`) to delete a folder inside a shared/delegated mailbox (the folder is resolved and removed in that mailbox; requires Mail.ReadWrite.Shared + delegate access). Protected folders (Inbox, Drafts, Sent, etc.) still cannot be deleted in any mailbox.",
+      "Manage mail folders (tool-level destructiveHint=true because `delete` permanently removes a folder; `list` and `stats` are read-only sub-actions despite the annotation). Folders can be addressed by name, by a slash-separated PATH for nested folders (e.g. `Triage/Delete`, `Inbox/Clients/Acme`, case-insensitive), or by explicit ID; `list` output includes each folder's full path and `[id: …]`. A bare name resolves a unique top-level folder first, then searches nested folders (ambiguous names return the candidates — disambiguate with a path or ID). action=`list` (default) returns the folder tree (toggle `includeItemCounts` for unread/total, `includeChildren` for hierarchy). action=`create` makes a new folder under the root, or under `parentFolder` (name/path) / `parentFolderId`, and returns its id. action=`move` relocates emails (`emailIds`) into `targetFolder` (name/path) or `targetFolderId`. action=`stats` returns counts (totalItemCount/unreadItemCount) for `folder` (name/path) or `folderId`, suitable for pagination planning. action=`delete` removes a folder (by `folderName`/path or `folderId`) and its contents — on Outlook.com the folder is moved to Deleted Items (recoverable until you empty it); M365/Exchange accounts may hard-delete per retention policy. Every action accepts `sharedMailbox` (alias `email`) to target a shared/delegated mailbox instead of the signed-in account — folder names, paths, and IDs are then resolved inside that mailbox. Protected folders cannot be deleted in any mailbox.",
     annotations: {
       title: 'Mail Folders',
       readOnlyHint: false,
@@ -36,15 +36,15 @@ const folderTools = [
           type: 'boolean',
           description: 'Include child folders in hierarchy (action=list)',
         },
+        // shared-mailbox scoping (all actions)
         sharedMailbox: {
           type: 'string',
           description:
-            'Email address of a shared/delegated mailbox to target instead of the signed-in account (action=list enumerates its folders; action=move files messages within it; action=create makes a folder inside it; action=stats returns its counts; action=delete removes a folder inside it). Requires delegate access + Mail.Read.Shared (list/stats) / Mail.ReadWrite.Shared (move/create/delete).',
+            'Email address of a shared/delegated mailbox to target instead of the signed-in account (all actions). Requires delegate access + Mail.Read.Shared (list/stats) or Mail.ReadWrite.Shared (create/move/delete).',
         },
         email: {
           type: 'string',
-          description:
-            'Alias for `sharedMailbox` (action=list/move/create/stats/delete).',
+          description: 'Alias for `sharedMailbox`.',
         },
         // create params
         name: {
@@ -53,7 +53,13 @@ const folderTools = [
         },
         parentFolder: {
           type: 'string',
-          description: 'Parent folder name, default is root (action=create)',
+          description:
+            'Parent folder name or path (e.g. "Clients/Acme"); default is root (action=create)',
+        },
+        parentFolderId: {
+          type: 'string',
+          description:
+            'Parent folder ID — alternative to parentFolder for unambiguous targeting (action=create)',
         },
         // move params
         emailIds: {
@@ -63,7 +69,13 @@ const folderTools = [
         },
         targetFolder: {
           type: 'string',
-          description: 'Folder name to move emails to (action=move, required)',
+          description:
+            'Destination folder name or path, e.g. "Triage/Delete" (action=move; or use targetFolderId)',
+        },
+        targetFolderId: {
+          type: 'string',
+          description:
+            'Destination folder ID — alternative to targetFolder for unambiguous/nested targeting (action=move)',
         },
         sourceFolder: {
           type: 'string',
@@ -73,22 +85,22 @@ const folderTools = [
         folder: {
           type: 'string',
           description:
-            'Folder name (inbox, sent, drafts, etc.). Default: inbox (action=stats)',
+            'Folder name or path (inbox, sent, "Triage/Delete", etc.). Default: inbox (action=stats)',
         },
         outputVerbosity: {
           type: 'string',
           enum: ['minimal', 'standard', 'full'],
           description: 'Output detail level (action=stats, default: standard)',
         },
-        // delete params
+        // delete/stats params
         folderId: {
           type: 'string',
-          description: 'Folder ID to delete (action=delete)',
+          description: 'Folder ID (action=stats/delete)',
         },
         folderName: {
           type: 'string',
           description:
-            'Folder name to delete — resolved to ID (action=delete). Cannot delete protected folders (Inbox, Drafts, Sent, etc.)',
+            'Folder name or path to delete — resolved to ID (action=delete). Cannot delete protected folders (Inbox, Drafts, Sent, etc.)',
         },
       },
       additionalProperties: false,

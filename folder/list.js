@@ -1,8 +1,8 @@
 /**
  * List folders functionality
  */
-const { callGraphAPI } = require('../utils/graph-api');
 const { ensureAuthenticated } = require('../auth');
+const { listChildFolders } = require('./resolve');
 
 /**
  * List folders handler
@@ -19,7 +19,7 @@ async function handleListFolders(args) {
     // Get access token
     const accessToken = await ensureAuthenticated();
 
-    // Get all mail folders (signed-in account or a shared mailbox)
+    // Get all mail folders
     const folders = await getAllFoldersHierarchy(
       accessToken,
       includeItemCounts,
@@ -84,80 +84,64 @@ async function getAllFoldersHierarchy(
   includeItemCounts,
   sharedMailbox = null
 ) {
-  const prefix = sharedMailbox ? `users/${sharedMailbox}` : 'me';
+  // Determine select fields based on whether to include counts
+  const selectFields = includeItemCounts
+    ? 'id,displayName,parentFolderId,childFolderCount,totalItemCount,unreadItemCount'
+    : 'id,displayName,parentFolderId,childFolderCount';
 
-  try {
-    // Determine select fields based on whether to include counts
-    const selectFields = includeItemCounts
-      ? 'id,displayName,parentFolderId,childFolderCount,totalItemCount,unreadItemCount'
-      : 'id,displayName,parentFolderId,childFolderCount';
+  // Full recursive, paginated walk so nested folders at ANY depth appear with
+  // their complete path (not just one level). (#216 review)
+  const top = await listChildFolders(
+    accessToken,
+    null,
+    selectFields,
+    sharedMailbox
+  );
+  const all = [];
+  const visited = new Set();
+  const queue = top.map((folder) => ({
+    folder,
+    path: folder.displayName,
+    parentPath: null,
+    depth: 1,
+    isTopLevel: true,
+  }));
 
-    // Get all mail folders
-    const response = await callGraphAPI(
-      accessToken,
-      'GET',
-      `${prefix}/mailFolders`,
-      null,
-      {
-        $top: 100,
-        $select: selectFields,
-      }
-    );
-
-    if (!response.value) {
-      return [];
+  for (let i = 0; i < queue.length; i++) {
+    const { folder, path, parentPath, depth, isTopLevel } = queue[i];
+    if (visited.has(folder.id)) {
+      continue;
     }
+    visited.add(folder.id);
+    all.push({ ...folder, path, parentFolder: parentPath, isTopLevel });
 
-    const topLevelFolders = response.value.map((folder) => ({
-      ...folder,
-      isTopLevel: true,
-    }));
-
-    // Recursively gather descendants for any folder reporting children.
-    async function gatherChildren(folder) {
-      let childResponse;
+    if (folder.childFolderCount > 0 && depth < 20) {
+      let children;
       try {
-        childResponse = await callGraphAPI(
+        children = await listChildFolders(
           accessToken,
-          'GET',
-          `${prefix}/mailFolders/${folder.id}/childFolders`,
-          null,
-          { $top: 100, $select: selectFields }
+          folder.id,
+          selectFields,
+          sharedMailbox
         );
       } catch (error) {
         console.error(
           `Error getting child folders for "${folder.displayName}": ${error.message}`
         );
-        return [];
+        continue;
       }
-
-      const children = childResponse.value || [];
-      const result = [];
       for (const child of children) {
-        child.parentFolder = folder.displayName;
-        result.push(child);
-        if (child.childFolderCount > 0) {
-          const grandchildren = await gatherChildren(child);
-          result.push(...grandchildren);
-        }
+        queue.push({
+          folder: child,
+          path: `${path}/${child.displayName}`,
+          parentPath: path,
+          depth: depth + 1,
+          isTopLevel: false,
+        });
       }
-      return result;
     }
-
-    const allChildFolders = [];
-    for (const folder of topLevelFolders.filter(
-      (f) => f.childFolderCount > 0
-    )) {
-      const descendants = await gatherChildren(folder);
-      allChildFolders.push(...descendants);
-    }
-
-    // Combine all folders
-    return [...topLevelFolders, ...allChildFolders];
-  } catch (error) {
-    console.error(`Error getting all folders: ${error.message}`);
-    throw error;
   }
+  return all;
 }
 
 /**
@@ -201,14 +185,13 @@ function formatFolderList(folders, includeItemCounts) {
     return a.displayName.localeCompare(b.displayName);
   });
 
-  // Format each folder
+  // Format each folder. Emit the full path and folder ID so callers can
+  // address nested folders directly — `folders move targetFolder="Parent/Child"`
+  // or `targetFolderId=...`. (#216)
   const folderLines = sortedFolders.map((folder) => {
-    let folderInfo = folder.displayName;
-
-    // Add parent folder info if available
-    if (folder.parentFolder) {
-      folderInfo += ` (in ${folder.parentFolder})`;
-    }
+    // Full path (computed during the recursive walk) so nested folders are
+    // addressable directly. (#216)
+    let folderInfo = folder.path || folder.displayName;
 
     // Add item counts if requested
     if (includeItemCounts) {
@@ -220,6 +203,8 @@ function formatFolderList(folders, includeItemCounts) {
         folderInfo += ` (${unreadCount} unread)`;
       }
     }
+
+    folderInfo += ` [id: ${folder.id}]`;
 
     return folderInfo;
   });
@@ -286,6 +271,9 @@ function formatFolderHierarchy(folders, includeItemCounts) {
       }
     }
 
+    // Surface the folder ID so callers can address it directly. (#216)
+    line += ` [id: ${folder.id}]`;
+
     // Add children
     const childLines = folder.children
       .map((childId) => formatSubtree(childId, level + 1))
@@ -304,3 +292,6 @@ function formatFolderHierarchy(folders, includeItemCounts) {
 }
 
 module.exports = handleListFolders;
+// Named export so the shared-mailbox folder listing in `access-shared-mailbox`
+// reuses this walk instead of carrying its own copy.
+module.exports.getAllFoldersHierarchy = getAllFoldersHierarchy;

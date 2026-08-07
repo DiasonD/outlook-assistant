@@ -12,11 +12,9 @@ const { callGraphAPI } = require('../utils/graph-api');
 const { ensureAuthenticated } = require('../auth');
 const { FIELD_PRESETS } = require('../utils/field-presets');
 const { DEFAULT_TIMEZONE } = require('../config');
-const {
-  resolveFolderRef,
-  getAllFolders,
-  buildMailboxPrefix,
-} = require('../email/folder-utils');
+const { buildMailboxPrefix } = require('../utils/mailbox');
+const { resolveFolder } = require('../folder/resolve');
+const { getAllFoldersHierarchy } = require('../folder/list');
 
 /**
  * Format an email for display (simplified)
@@ -84,29 +82,32 @@ async function handleAccessSharedMailbox(args) {
     // shared mailbox. A raw `folderId` (from `listFolders`) is used as-is;
     // otherwise custom and localized folder names are resolved via the tree.
     let resolvedFolder;
-    if (folderId) {
-      resolvedFolder = folderId;
-    } else {
-      resolvedFolder = await resolveFolderRef(
-        accessToken,
-        mailFolder,
-        sharedMailbox
-      );
-      if (!resolvedFolder) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text:
-                `Folder "${mailFolder}" not found in ${sharedMailbox}.\n\n` +
-                'List the shared mailbox folders first to get exact names/IDs:\n' +
-                '- `access-shared-mailbox` with `listFolders: true`, or\n' +
-                `- \`folders\` tool with \`action: list\`, \`sharedMailbox: "${sharedMailbox}"\`\n\n` +
-                'You can also pass a folder path (e.g. `Inbox/Vendors/Acme`) or a `folderId`.',
-            },
-          ],
-        };
+    try {
+      const resolved = await resolveFolder(accessToken, {
+        id: folderId,
+        name: mailFolder,
+        mailbox: sharedMailbox,
+      });
+      resolvedFolder = resolved.id;
+    } catch (resolveError) {
+      // Only resolution failures get the discovery hint — a Graph error
+      // (access denied, 5xx) must fall through to the generic handler below
+      // rather than masquerading as "folder not found".
+      if (!/not found|ambiguous/i.test(resolveError.message)) {
+        throw resolveError;
       }
+      return {
+        content: [
+          {
+            type: 'text',
+            text:
+              `${resolveError.message}\n\n` +
+              `Searched in ${sharedMailbox}. List its folders first to get exact names/IDs:\n` +
+              '- `access-shared-mailbox` with `listFolders: true`, or\n' +
+              `- \`folders\` tool with \`action: list\`, \`sharedMailbox: "${sharedMailbox}"\``,
+          },
+        ],
+      };
     }
 
     // Build endpoint for shared mailbox
@@ -249,10 +250,11 @@ async function handleListSharedMailboxFolders(sharedMailbox, args) {
   try {
     const accessToken = await ensureAuthenticated();
 
-    const folders = await getAllFolders(accessToken, {
-      mailbox: sharedMailbox,
-      includeItemCounts: true,
-    });
+    const folders = await getAllFoldersHierarchy(
+      accessToken,
+      true,
+      sharedMailbox
+    );
 
     if (!folders || folders.length === 0) {
       return {
@@ -270,7 +272,7 @@ async function handleListSharedMailboxFolders(sharedMailbox, args) {
     output.push(`**Folders**: ${folders.length}\n`);
 
     folders.forEach((f) => {
-      const depth = f.folderPath ? f.folderPath.split('/').length - 1 : 0;
+      const depth = f.path ? f.path.split('/').length - 1 : 0;
       const indent = '  '.repeat(depth);
       let line = `${indent}- ${f.displayName}`;
       const total = f.totalItemCount || 0;
@@ -278,7 +280,7 @@ async function handleListSharedMailboxFolders(sharedMailbox, args) {
       line += ` (${total} items${unread > 0 ? `, ${unread} unread` : ''})`;
       output.push(line);
       if (verbosity === 'full') {
-        output.push(`${indent}  path: \`${f.folderPath}\``);
+        output.push(`${indent}  path: \`${f.path}\``);
         output.push(`${indent}  id: \`${f.id}\``);
       }
     });
@@ -301,7 +303,7 @@ async function handleListSharedMailboxFolders(sharedMailbox, args) {
         folders: folders.map((f) => ({
           id: f.id,
           displayName: f.displayName,
-          folderPath: f.folderPath,
+          folderPath: f.path,
           parentFolderId: f.parentFolderId,
           totalItemCount: f.totalItemCount,
           unreadItemCount: f.unreadItemCount,
@@ -765,7 +767,9 @@ const advancedTools = [
     annotations: {
       title: 'Shared Mailbox',
       readOnlyHint: true,
-      openWorldHint: false,
+      // openWorldHint: returns shared-mailbox messages authored by external
+      // senders. (#92)
+      openWorldHint: true,
     },
     inputSchema: {
       type: 'object',

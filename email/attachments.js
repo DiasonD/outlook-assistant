@@ -9,7 +9,7 @@ const path = require('path');
 const _config = require('../config'); // Reserved for future use
 const { callGraphAPI } = require('../utils/graph-api');
 const { ensureAuthenticated } = require('../auth');
-const { buildMailboxPrefix } = require('./folder-utils');
+const { buildMailboxPrefix } = require('../utils/mailbox');
 
 /**
  * List attachments for a specific email

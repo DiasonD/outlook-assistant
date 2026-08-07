@@ -86,7 +86,7 @@ Yes. Two layers of control let you scope what Outlook Assistant can do:
 1. **Azure permissions.** When you register the app, request only the read scopes — `Mail.Read`, `Calendars.Read`, `Contacts.Read`, `User.Read`, `offline_access` — and skip the `*ReadWrite` and `Mail.Send` scopes. Tools that need write access will fail at the Graph layer, which is the correct behaviour.
 2. **Send-safety belts.** Even with full permissions, you can configure `OUTLOOK_MAX_EMAILS_PER_SESSION` (rate cap on `send-email` + `draft send`) and `OUTLOOK_ALLOWED_RECIPIENTS` (allowlist of approved addresses or domains). `auth action=about` reports their state and prints a setup hint when unset. See the [Recommended setup snippet](../README.md#safety--token-efficiency) in the README and [`.mcp.json.example`](../.mcp.json.example) for the copy-paste template.
 
-Every tool also carries [MCP annotations](https://modelcontextprotocol.io/docs/concepts/tools#annotations) (`readOnlyHint`, `destructiveHint`, `idempotentHint`) so AI clients can auto-approve safe reads and prompt for confirmation on destructive operations.
+Every tool also carries [MCP annotations](https://modelcontextprotocol.io/docs/concepts/tools#annotations) (`readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint`) so AI clients can auto-approve safe reads and prompt for confirmation on destructive operations. Tools whose output can include content authored by external senders — `search-emails`, `read-email`, `search-people`, `access-shared-mailbox`, `attachments`, `export` — set `openWorldHint: true`, signalling clients to treat that content with appropriate caution (e.g. prompt-injection defences).
 
 ## Why does Outlook Assistant need an Azure app registration?
 
@@ -104,7 +104,7 @@ Most users should pick device code unless they have a specific reason to use the
 
 ## How do I update Outlook Assistant?
 
-Outlook Assistant is published to npm as **`@littlebearapps/outlook-assistant`**. The simplest path is to let your MCP client pick up the latest version automatically — most clients call `npx @littlebearapps/outlook-assistant` which fetches the latest published version on each spawn. To pin a version, replace `@littlebearapps/outlook-assistant` with `@littlebearapps/outlook-assistant@3.7.4` (or whichever version) in your MCP client config.
+Outlook Assistant is published to npm as **`@littlebearapps/outlook-assistant`**. The simplest path is to let your MCP client pick up the latest version automatically — most clients call `npx @littlebearapps/outlook-assistant` which fetches the latest published version on each spawn. To pin a version, replace `@littlebearapps/outlook-assistant` with `@littlebearapps/outlook-assistant@3.9.0` (or whichever version) in your MCP client config.
 
 If you installed globally, `npm update -g @littlebearapps/outlook-assistant` (or `npm install -g @littlebearapps/outlook-assistant@latest`). If you cloned from source, `git pull && npm install`. After updating, restart your MCP client so the running server picks up the new code — Node module caching means the previously-loaded source stays in memory until the server process is recycled.
 

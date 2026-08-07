@@ -8,7 +8,8 @@ const { callGraphAPI } = require('../utils/graph-api');
 const { ensureAuthenticated } = require('../auth');
 const { formatEmailList, VERBOSITY } = require('../utils/response-formatter');
 const { getEmailFields } = require('../utils/field-presets');
-const { buildMailboxPrefix, resolveFolderRef } = require('./folder-utils');
+const { buildMailboxPrefix } = require('../utils/mailbox');
+const { resolveFolder } = require('../folder/resolve');
 
 /**
  * List emails delta handler - incremental sync
@@ -43,18 +44,13 @@ async function handleListEmailsDelta(args) {
       // Initial sync - start fresh. Resolve the folder (well-known name,
       // nested path, display name, or raw ID) within the target mailbox so
       // custom subfolders work for shared mailboxes too.
-      const ref = await resolveFolderRef(accessToken, folder, sharedMailbox);
-      if (!ref) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Folder "${folder}" not found. Use the folders tool (action=list) to see available folders.`,
-            },
-          ],
-        };
-      }
-      endpoint = `${prefix}/mailFolders/${ref}/messages/delta`;
+      // Resolution failures (not-found / ambiguous) carry their own actionable
+      // message; let them propagate to the handler's catch like any other error.
+      const resolved = await resolveFolder(accessToken, {
+        name: folder,
+        mailbox: sharedMailbox,
+      });
+      endpoint = `${prefix}/mailFolders/${resolved.id}/messages/delta`;
       queryParams = {
         $select: getEmailFields('delta'),
         $top: maxResults.toString(),

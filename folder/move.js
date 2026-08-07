@@ -3,10 +3,8 @@
  */
 const { callGraphAPI } = require('../utils/graph-api');
 const { ensureAuthenticated } = require('../auth');
-const {
-  getFolderIdByName,
-  buildMailboxPrefix,
-} = require('../email/folder-utils');
+const { resolveFolder } = require('./resolve');
+const { buildMailboxPrefix } = require('../utils/mailbox');
 
 /**
  * Move emails handler
@@ -16,6 +14,7 @@ const {
 async function handleMoveEmails(args) {
   const emailIds = args.emailIds || '';
   const targetFolder = args.targetFolder || '';
+  const targetFolderId = args.targetFolderId || '';
   const sourceFolder = args.sourceFolder || '';
   const sharedMailbox = args.sharedMailbox || args.email || null;
 
@@ -30,12 +29,12 @@ async function handleMoveEmails(args) {
     };
   }
 
-  if (!targetFolder) {
+  if (!targetFolder && !targetFolderId) {
     return {
       content: [
         {
           type: 'text',
-          text: 'Target folder name is required.',
+          text: 'Target folder is required — pass `targetFolder` (name or "Parent/Child" path) or `targetFolderId`.',
         },
       ],
     };
@@ -66,9 +65,8 @@ async function handleMoveEmails(args) {
     const result = await moveEmailsToFolder(
       accessToken,
       ids,
-      targetFolder,
-      sourceFolder,
-      sharedMailbox
+      { name: targetFolder, id: targetFolderId, mailbox: sharedMailbox },
+      sourceFolder
     );
 
     return {
@@ -106,31 +104,28 @@ async function handleMoveEmails(args) {
  * Move emails to a folder
  * @param {string} accessToken - Access token
  * @param {Array<string>} emailIds - Array of email IDs to move
- * @param {string} targetFolderName - Name of the target folder
+ * @param {{name?: string, id?: string, mailbox?: string|null}} targetSpec - Target folder name/path or ID, plus optional shared mailbox
  * @param {string} sourceFolderName - Name of the source folder (optional)
  * @returns {Promise<object>} - Result object with status and message
  */
 async function moveEmailsToFolder(
   accessToken,
   emailIds,
-  targetFolderName,
-  _sourceFolderName,
-  mailbox = null
+  targetSpec,
+  _sourceFolderName
 ) {
+  const prefix = buildMailboxPrefix(targetSpec.mailbox);
   try {
-    // Resolve the target folder within the correct mailbox (shared or `me`)
-    const prefix = buildMailboxPrefix(mailbox);
-    const targetFolderId = await getFolderIdByName(
-      accessToken,
-      targetFolderName,
-      mailbox
-    );
-    if (!targetFolderId) {
-      return {
-        success: false,
-        message: `Target folder "${targetFolderName}" not found. Please specify a valid folder name.`,
-      };
+    // Resolve the target folder (supports "Parent/Child" paths, aliases, and
+    // explicit IDs — nested folders are now addressable). (#216)
+    let target;
+    try {
+      target = await resolveFolder(accessToken, targetSpec);
+    } catch (resolveError) {
+      return { success: false, message: resolveError.message };
     }
+    const targetFolderId = target.id;
+    const targetLabel = target.path;
 
     // Track successful and failed moves
     const results = {
@@ -146,9 +141,7 @@ async function moveEmailsToFolder(
           accessToken,
           'POST',
           `${prefix}/messages/${emailId}/move`,
-          {
-            destinationId: targetFolderId,
-          }
+          { destinationId: targetFolderId }
         );
 
         results.successful.push(emailId);
@@ -165,7 +158,7 @@ async function moveEmailsToFolder(
     let message = '';
 
     if (results.successful.length > 0) {
-      message += `Successfully moved ${results.successful.length} email(s) to "${targetFolderName}".`;
+      message += `Successfully moved ${results.successful.length} email(s) to "${targetLabel}".`;
     }
 
     if (results.failed.length > 0) {

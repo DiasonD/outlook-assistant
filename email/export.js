@@ -15,7 +15,8 @@ const {
   VERBOSITY,
 } = require('../utils/response-formatter');
 const { getEmailFields } = require('../utils/field-presets');
-const { buildMailboxPrefix, resolveFolderPath } = require('./folder-utils');
+const { resolveFolderPath } = require('./folder-utils');
+const { buildMailboxPrefix } = require('../utils/mailbox');
 
 // Export format constants
 const EXPORT_FORMATS = {

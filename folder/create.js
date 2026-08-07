@@ -3,10 +3,8 @@
  */
 const { callGraphAPI } = require('../utils/graph-api');
 const { ensureAuthenticated } = require('../auth');
-const {
-  getFolderIdByName,
-  buildMailboxPrefix,
-} = require('../email/folder-utils');
+const { resolveFolder, listChildFolders } = require('./resolve');
+const { buildMailboxPrefix } = require('../utils/mailbox');
 
 /**
  * Create folder handler
@@ -14,8 +12,9 @@ const {
  * @returns {object} - MCP response
  */
 async function handleCreateFolder(args) {
-  const folderName = args.name;
+  const folderName = (args.name || '').trim();
   const parentFolder = args.parentFolder || '';
+  const parentFolderId = args.parentFolderId || '';
   const sharedMailbox = args.sharedMailbox || args.email || null;
 
   if (!folderName) {
@@ -34,12 +33,11 @@ async function handleCreateFolder(args) {
     const accessToken = await ensureAuthenticated();
 
     // Create folder with appropriate parent
-    const result = await createMailFolder(
-      accessToken,
-      folderName,
-      parentFolder,
-      sharedMailbox
-    );
+    const result = await createMailFolder(accessToken, folderName, {
+      name: parentFolder,
+      id: parentFolderId,
+      mailbox: sharedMailbox,
+    });
 
     return {
       content: [
@@ -79,48 +77,49 @@ async function handleCreateFolder(args) {
  * Create a new mail folder
  * @param {string} accessToken - Access token
  * @param {string} folderName - Name of the folder to create
- * @param {string} parentFolderName - Name of the parent folder (optional)
+ * @param {{name?: string, id?: string, mailbox?: string|null}} parentSpec - Parent folder name/path or ID, plus optional shared mailbox
  * @returns {Promise<object>} - Result object with status and message
  */
-async function createMailFolder(
-  accessToken,
-  folderName,
-  parentFolderName,
-  mailbox = null
-) {
+async function createMailFolder(accessToken, folderName, parentSpec) {
+  const mailbox = parentSpec.mailbox || null;
+  const prefix = buildMailboxPrefix(mailbox);
   try {
-    const prefix = buildMailboxPrefix(mailbox);
+    // Resolve the parent folder if one was specified (supports "Parent/Child"
+    // paths and explicit IDs). Leaf name (folderName) is created, not
+    // resolved. (#216)
+    let parent = null;
+    if (parentSpec.name || parentSpec.id) {
+      try {
+        parent = await resolveFolder(accessToken, parentSpec);
+      } catch (resolveError) {
+        return {
+          success: false,
+          message: `Parent folder could not be resolved: ${resolveError.message}`,
+        };
+      }
+    }
 
-    // Check if a folder with this name already exists
-    const existingFolder = await getFolderIdByName(
+    // Duplicate check scoped to the TARGET parent (or the root), not the whole
+    // mailbox — a name may legitimately exist under a different parent. (#216)
+    const siblings = await listChildFolders(
       accessToken,
-      folderName,
+      parent ? parent.id : null,
+      undefined,
       mailbox
     );
-    if (existingFolder) {
+    const lower = folderName.toLowerCase();
+    if (siblings.some((f) => f.displayName.toLowerCase() === lower)) {
       return {
         success: false,
-        message: `A folder named "${folderName}" already exists.`,
+        message: `A folder named "${folderName}" already exists ${
+          parent ? `under "${parent.path}"` : 'at the root level'
+        }.`,
       };
     }
 
-    // If parent folder specified, find its ID
-    let endpoint = `${prefix}/mailFolders`;
-    if (parentFolderName) {
-      const parentId = await getFolderIdByName(
-        accessToken,
-        parentFolderName,
-        mailbox
-      );
-      if (!parentId) {
-        return {
-          success: false,
-          message: `Parent folder "${parentFolderName}" not found. Please specify a valid parent folder or leave it blank to create at the root level.`,
-        };
-      }
-
-      endpoint = `${prefix}/mailFolders/${parentId}/childFolders`;
-    }
+    const endpoint = parent
+      ? `${prefix}/mailFolders/${parent.id}/childFolders`
+      : `${prefix}/mailFolders`;
 
     // Create the folder
     const folderData = {
@@ -135,8 +134,8 @@ async function createMailFolder(
     );
 
     if (response && response.id) {
-      const locationInfo = parentFolderName
-        ? `inside "${parentFolderName}"`
+      const locationInfo = parent
+        ? `inside "${parent.path}"`
         : 'at the root level';
 
       return {

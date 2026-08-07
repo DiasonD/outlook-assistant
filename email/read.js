@@ -11,7 +11,7 @@ const {
   VERBOSITY,
 } = require('../utils/response-formatter');
 const { getEmailFields } = require('../utils/field-presets');
-const { buildMailboxPrefix } = require('./folder-utils');
+const { buildMailboxPrefix } = require('../utils/mailbox');
 
 /**
  * Get field preset based on verbosity and options

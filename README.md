@@ -39,7 +39,7 @@ Outlook Assistant connects AI assistants to your Microsoft Outlook account throu
 - 📅 **Manage your calendar** — view upcoming events, schedule meetings with attendees, decline or cancel invitations
 - 📦 **Export emails** — save individual messages to Markdown, EML, JSON, or CSV; export full conversation threads to MBOX or HTML; bulk-export search results in one call
 - 🔍 **Investigate email headers** — full raw header access (DKIM, SPF, DMARC, delivery chain, X-Mailer, X-Originating-IP) for phishing investigation and compliance review
-- 🗂️ **Organise your inbox** — create folders, set up inbox rules, colour-code with categories, manage Focused Inbox — all work together for complete inbox automation
+- 🗂️ **Organise your inbox** — create nested folders (addressable by path), set up inbox rules, colour-code with categories, manage Focused Inbox — all work together for complete inbox automation
 - 🔄 **Track inbox changes** — delta sync detects new, modified, and deleted emails since your last check, with tokens for incremental polling
 - 👥 **Manage contacts** — search your contact book and organisational directory, create and update contact records
 - ⚙️ **Configure settings** — set out-of-office auto-replies, working hours, and time zone
@@ -67,7 +67,7 @@ Outlook Assistant connects AI assistants to your Microsoft Outlook account throu
 | **Contacts** | 2 | `manage-contact` (list/search/get/create/update/delete), `search-people` |
 | **Categories** | 3 | `manage-category` (CRUD), `apply-category`, `manage-focused-inbox` |
 | **Settings** | 1 | `mailbox-settings` (get/set auto-replies/set working hours) |
-| **Folder** | 1 | `folders` (list/create/move/stats/delete) |
+| **Folder** | 1 | `folders` (list/create/move/stats/delete) — nested folders addressable by path (`Parent/Child`) or ID |
 | **Rules** | 1 | `manage-rules` (list/create/update/reorder/delete) |
 | **Advanced** | 2 | `access-shared-mailbox`, `find-meeting-rooms` |
 | **Auth** | 1 | `auth` (status/authenticate/about) |
@@ -112,7 +112,7 @@ Outlook Assistant works with both personal and work/school Microsoft accounts, b
 ### What Makes This Different
 
 - **Progressive search** — on accounts where Microsoft's `$search` API is limited, Outlook Assistant automatically falls back through up to 4 search strategies to find your emails. Most Graph API wrappers fail silently; this one adapts.
-- **Email forensics** — raw header access for DKIM, SPF, DMARC, delivery chain, X-Mailer, X-Originating-IP, and spam scores. Returns the full data so you can investigate phishing, audit compliance, or trace delivery issues. (Auto-verdict is on the v3.8.0 roadmap; today the data is surfaced and analysed in-conversation.)
+- **Email forensics** — raw header access for DKIM, SPF, DMARC, delivery chain, X-Mailer, X-Originating-IP, and spam scores. Returns the full data so you can investigate phishing, audit compliance, or trace delivery issues. (Auto-verdict is on the roadmap; today the data is surfaced and analysed in-conversation.)
 - **Delta sync** — incremental inbox monitoring returns only what changed since your last check, with tokens for continuous polling. Designed for agent workflows that need to watch a mailbox.
 - **Batch operations** — flag, move, export, or categorise multiple emails in a single call. Search-driven export lets you batch-export results without collecting IDs manually.
 - **Pre-send intelligence** — check recipients for out-of-office, full mailbox, delivery restrictions, and moderation status before sending — no other Outlook MCP server offers this.
@@ -498,7 +498,7 @@ USE_TEST_MODE=true npm start
 | [Getting Started](docs/how-to/getting-started/connect-outlook-to-claude.md) | Install, configure, and authenticate — start here |
 | [Azure Setup Guide](docs/guides/azure-setup.md) | Azure account creation, app registration, permissions, and secrets |
 | [How-To Guides](docs/how-to/index.md) | 29 practical guides for email, calendar, contacts, and settings |
-| [Roadmap](ROADMAP.md) | Active milestones (v3.7.5, v3.8.0, v3.9.0) and recent releases |
+| [Roadmap](ROADMAP.md) | Active milestones (v3.7.5, v3.8.x, v3.10.0+) and recent releases |
 | [Troubleshooting & FAQ](docs/how-to/getting-started/verify-your-connection.md#common-connection-problems) | Common problems, re-authentication, and frequently asked questions |
 | [Tools Reference](docs/quickrefs/tools-reference.md) | All 22 tools with parameters |
 | [AI Agent Guide](docs/how-to/ai-agents/using-outlook-assistant-in-agents.md) | Tool selection and workflow patterns for AI agents |
@@ -507,7 +507,7 @@ Full documentation: [docs/](docs/README.md)
 
 ## Known Limitations
 
-- **Personal account search**: Free-text `query` and `kqlQuery` rely on Microsoft's `$search` API, which has limited support on personal Outlook.com accounts. Outlook Assistant mitigates this with progressive search fallback (trying OData filters automatically), but for the most direct results, use structured filters (`from`, `subject`, `to`, `receivedAfter`).
+- **Personal account search**: Free-text `query` and the raw `searchExpression` (formerly `kqlQuery`) rely on Microsoft's `$search` API, which has limited support on personal Outlook.com accounts — field-scoped raw `$search` (e.g. `subject:"…"`) may return nothing there. `query` mitigates this with progressive fallback (OData filters, then client-side), so for reliable personal-account search prefer structured filters (`from`, `subject`, `to`, `receivedAfter`) or `query`. Cross-folder search (`searchAllFolders: true`) returns a superset of inbox-only results.
 - **Focused Inbox**: Only available on work/school Microsoft 365 accounts.
 - **Shared mailboxes**: Require a work/school account. Reading needs `Mail.Read.Shared`; writing (move/categorize/flag/mark-read/create folders via `sharedMailbox`) needs `Mail.ReadWrite.Shared` — add it in Azure and re-authenticate. Custom subfolders are supported — pass `folder` as a display name or nested path (e.g. `Inbox/Vendors/Acme`), a raw `folderId`, or use `listFolders: true` (or `folders action=list, sharedMailbox: …`) to discover them.
 - **Meeting room search**: Requires `Place.Read.All` permission with admin consent (work/school accounts only).

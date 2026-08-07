@@ -5,7 +5,7 @@
  */
 const { callGraphAPI } = require('../utils/graph-api');
 const { ensureAuthenticated } = require('../auth');
-const { buildMailboxPrefix } = require('../email/folder-utils');
+const { buildMailboxPrefix } = require('../utils/mailbox');
 
 // Category color presets (Outlook uses these names)
 const CATEGORY_COLORS = [
@@ -870,7 +870,8 @@ const categoriesTools = [
         },
         categoryId: {
           type: 'string',
-          description: 'DEPRECATED: alias for `id`. Will be removed in v3.8.0.',
+          description:
+            'DEPRECATED: alias for `id`. Will be removed in a future release.',
         },
       },
       additionalProperties: false,

@@ -4,9 +4,9 @@
  * when `sharedMailbox`/`email` is supplied, rather than silently querying the
  * signed-in account.
  *
- * folder-utils is partially mocked: the real `buildMailboxPrefix` runs so the
- * `me` vs `users/{mailbox}` construction is exercised, while `resolveFolderRef`
- * is stubbed to a deterministic value so delta-mode endpoint assertions don't
+ * The real `buildMailboxPrefix` runs so the `me` vs `users/{mailbox}`
+ * construction is exercised; the shared folder resolver (`folder/resolve`) is
+ * stubbed to a deterministic value so delta-mode endpoint assertions don't
  * depend on live folder enumeration.
  */
 const handleListEmailsDelta = require('../../email/delta');
@@ -17,17 +17,11 @@ const { handler: searchEmailsHandler } =
   );
 const { callGraphAPI } = require('../../utils/graph-api');
 const { ensureAuthenticated } = require('../../auth');
-const folderUtils = require('../../email/folder-utils');
+const { resolveFolder } = require('../../folder/resolve');
 
 jest.mock('../../utils/graph-api');
 jest.mock('../../auth');
-jest.mock('../../email/folder-utils', () => {
-  const actual = jest.requireActual('../../email/folder-utils');
-  return {
-    ...actual,
-    resolveFolderRef: jest.fn(),
-  };
-});
+jest.mock('../../folder/resolve');
 
 const TOKEN = 'test_token';
 const MAILBOX = 'office@werdropo.com';
@@ -42,7 +36,12 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(console, 'error').mockImplementation(() => {});
   ensureAuthenticated.mockResolvedValue(TOKEN);
-  folderUtils.resolveFolderRef.mockResolvedValue(RESOLVED_REF);
+  resolveFolder.mockResolvedValue({
+    id: RESOLVED_REF,
+    displayName: 'Vendors',
+    parentId: null,
+    path: 'Vendors',
+  });
 });
 
 afterEach(() => {
@@ -53,11 +52,10 @@ describe('delta initial sync — shared-mailbox routing', () => {
   test('routes to /users/{mailbox} when sharedMailbox is set', async () => {
     callGraphAPI.mockResolvedValue({ value: [] });
     await handleListEmailsDelta({ folder: 'Vendors', sharedMailbox: MAILBOX });
-    expect(folderUtils.resolveFolderRef).toHaveBeenCalledWith(
-      TOKEN,
-      'Vendors',
-      MAILBOX
-    );
+    expect(resolveFolder).toHaveBeenCalledWith(TOKEN, {
+      name: 'Vendors',
+      mailbox: MAILBOX,
+    });
     expect(endpointOfCall()).toBe(
       `users/${MAILBOX}/mailFolders/${RESOLVED_REF}/messages/delta`
     );
@@ -74,11 +72,10 @@ describe('delta initial sync — shared-mailbox routing', () => {
   test('defaults to /me when no mailbox supplied', async () => {
     callGraphAPI.mockResolvedValue({ value: [] });
     await handleListEmailsDelta({ folder: 'inbox' });
-    expect(folderUtils.resolveFolderRef).toHaveBeenCalledWith(
-      TOKEN,
-      'inbox',
-      null
-    );
+    expect(resolveFolder).toHaveBeenCalledWith(TOKEN, {
+      name: 'inbox',
+      mailbox: null,
+    });
     expect(endpointOfCall()).toBe(
       `me/mailFolders/${RESOLVED_REF}/messages/delta`
     );
@@ -91,13 +88,13 @@ describe('delta initial sync — shared-mailbox routing', () => {
       deltaToken: deltaLink,
       sharedMailbox: MAILBOX,
     });
-    // The deltaLink URL is used verbatim; resolveFolderRef must NOT run.
-    expect(folderUtils.resolveFolderRef).not.toHaveBeenCalled();
+    // The deltaLink URL is used verbatim; the resolver must NOT run.
+    expect(resolveFolder).not.toHaveBeenCalled();
     expect(endpointOfCall()).toBe(deltaLink);
   });
 
-  test('returns a clean folder-not-found response when ref is null', async () => {
-    folderUtils.resolveFolderRef.mockResolvedValue(null);
+  test('surfaces the resolver error instead of querying Graph', async () => {
+    resolveFolder.mockRejectedValue(new Error('Folder "Nope" not found.'));
     const result = await handleListEmailsDelta({
       folder: 'Nope',
       sharedMailbox: MAILBOX,
@@ -148,5 +145,46 @@ describe('search-emails router — forwards sharedMailbox to message-id lookup',
     callGraphAPI.mockResolvedValue({ value: [] });
     await searchEmailsHandler({ internetMessageId: '<abc123@example.com>' });
     expect(endpointOfCall()).toBe('me/messages');
+  });
+});
+
+// `search-emails` with no filters falls through to list mode (email/list.js),
+// which used to resolve the folder against /me regardless of sharedMailbox —
+// silently listing the WRONG mailbox.
+describe('search-emails list-mode fallthrough — shared-mailbox routing', () => {
+  const { callGraphAPIPaginated } = require('../../utils/graph-api');
+
+  test('no-filter call with sharedMailbox lists the shared mailbox folder', async () => {
+    resolveFolder.mockResolvedValue({
+      id: 'sub-id',
+      displayName: 'Vendors',
+      parentId: null,
+      path: 'Inbox/Vendors',
+    });
+    callGraphAPIPaginated.mockResolvedValue({ value: [] });
+
+    await searchEmailsHandler({
+      folder: 'Inbox/Vendors',
+      sharedMailbox: MAILBOX,
+    });
+
+    expect(resolveFolder).toHaveBeenCalledWith(TOKEN, {
+      name: 'Inbox/Vendors',
+      mailbox: MAILBOX,
+    });
+    expect(callGraphAPIPaginated.mock.calls[0][2]).toBe(
+      `users/${MAILBOX}/mailFolders/sub-id/messages`
+    );
+  });
+
+  test('no-filter call without a mailbox stays on /me', async () => {
+    callGraphAPIPaginated.mockResolvedValue({ value: [] });
+
+    await searchEmailsHandler({ folder: 'inbox' });
+
+    // Well-known folders short-circuit the resolver entirely.
+    expect(callGraphAPIPaginated.mock.calls[0][2]).toBe(
+      'me/mailFolders/inbox/messages'
+    );
   });
 });

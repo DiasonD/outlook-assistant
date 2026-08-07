@@ -30,7 +30,7 @@ jest.mock('../../config', () => ({
     defaultAuthMethod: 'device-code',
   },
   USE_TEST_MODE: false,
-  SERVER_VERSION: '3.7.2',
+  SERVER_VERSION: '3.9.0',
   DEFAULT_TIMEZONE: 'Australia/Melbourne',
 }));
 
@@ -373,6 +373,59 @@ describe('device code scope fallback + granted_scopes', () => {
       _saveTokensToFile: jest.fn(),
     }));
     await handleDeviceCodeComplete();
+  });
+});
+
+// #213 — device-code step 1 must surface failures as visible, actionable
+// error content instead of throwing (which the top-level dispatcher used to
+// convert into empty output). Mirrors the try/catch step 2 already has.
+describe('handleDeviceCodeAuth — visible errors on failure (#213)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  test('returns visible isError content (not empty, no throw) when initiation fails', async () => {
+    initiateDeviceCodeFlow.mockRejectedValue(
+      new Error(
+        'AADSTS9002331: Application is configured for personal Microsoft accounts only'
+      )
+    );
+
+    const result = await handleDeviceCodeAuth();
+
+    expect(result).toBeDefined();
+    expect(result.isError).toBe(true);
+    expect(Array.isArray(result.content)).toBe(true);
+    expect(result.content[0].text).toContain('AADSTS9002331');
+  });
+
+  test('includes audience-mismatch remediation hint for AADSTS9002331', async () => {
+    initiateDeviceCodeFlow.mockRejectedValue(
+      new Error('AADSTS9002331: audience mismatch on /common')
+    );
+
+    const result = await handleDeviceCodeAuth();
+    expect(result.content[0].text).toMatch(/OUTLOOK_AUTH_AUDIENCE=consumers/);
+  });
+
+  test('includes public-client-flow hint for invalid_client', async () => {
+    initiateDeviceCodeFlow.mockRejectedValue(
+      new Error('invalid_client: AADSTS7000218 public client flow not enabled')
+    );
+
+    const result = await handleDeviceCodeAuth();
+    expect(result.content[0].text).toMatch(/public client flows/i);
+  });
+
+  test('includes network-egress hint on connection failure', async () => {
+    const err = new Error('connect ETIMEDOUT 20.190.190.1:443');
+    err.code = 'ETIMEDOUT';
+    initiateDeviceCodeFlow.mockRejectedValue(err);
+
+    const result = await handleDeviceCodeAuth();
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/login\.microsoftonline\.com/);
   });
 });
 

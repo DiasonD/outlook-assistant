@@ -7,106 +7,191 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Follow-up correctness fixes from a code review of the shared-mailbox work.
+### Added
+
+- **Shared/delegated mailbox scoping (`sharedMailbox`, alias `email`)** — every
+  Graph path that takes a message ID, conversation ID, or folder is now
+  mailbox-aware via a single optional parameter routed through
+  `buildMailboxPrefix` (`utils/mailbox.js`: `me` -> `users/{email}`). No new
+  tools, no breaking changes -- purely additive parameters plus one new optional
+  scope.
+  - `folder/resolve.js` (the shared path-aware resolver added in v3.9.0) takes an
+    optional `mailbox`, so nested paths (`Inbox/Vendors/Acme`), custom and
+    localized display names, well-known aliases, ambiguity reporting, and
+    explicit folder IDs all work inside a shared mailbox exactly as they do in
+    the signed-in account.
+  - `folders` -- all five actions (`list`, `create`, `move`, `stats`, `delete`)
+    accept `sharedMailbox`.
+  - `search-emails` -- list/search, `searchAllFolders`, `deltaMode`,
+    `conversationId`, `groupByConversation`, and `internetMessageId` lookup.
+  - `read-email` (body and `headersMode` forensic headers), `attachments`
+    (list/view/download), `update-email` (mark-read/mark-unread/flag/unflag/
+    complete), `apply-category`, and every `export` target (`message`,
+    `messages` batch, `conversation`, `mime`).
+  - `access-shared-mailbox` resolves `folder` as a well-known name, a custom or
+    localized display name, or a nested path; accepts a raw `folderId`; and
+    supports `listFolders: true` to enumerate the mailbox's folder tree (names,
+    paths, IDs, item counts).
+  - Adds the **`Mail.ReadWrite.Shared`** delegated scope alongside
+    `Mail.Read.Shared`. Re-authenticate after granting it.
 
 ### Changed
 
-- **Automatic OAuth scope fallback (personal accounts)** — `config.js` no longer
-  requests the `.Shared` scopes in a single static list that breaks personal
-  Microsoft accounts. Scopes are split into `BASE_SCOPES` (consentable by any
-  account) and `SHARED_SCOPES` (`Mail.Read.Shared` + `Mail.ReadWrite.Shared`);
-  the auth flow attempts `BASE_SCOPES + SHARED_SCOPES` and, when an account can't
-  consent to `.Shared`, automatically retries with `AUTH_CONFIG.fallbackScopes`
-  (base only). Work/school accounts consent on the first try; personal accounts
-  incur one extra device code (or browser redirect). No `OUTLOOK_AUTH_AUDIENCE`
-  change or manual scope editing required. Rejection is classified by
-  `isScopeConsentError` (`auth/device-code.js`); the browser flow mirrors the
-  fallback via a one-shot `/auth?fallback=1` redirect (`auth/oauth-server.js`).
-- **Refresh uses granted scopes** — `token-storage.js` now persists
-  `granted_scopes` and refreshes with them (not the full configured set), so a
-  base-only fallback session isn't logged out ~1h later by re-requesting
-  `.Shared`.
-
-### Fixed
-
-- **`folders` (action `delete`) ignored `sharedMailbox`** — delete resolved and
-  removed the folder in the signed-in mailbox even when a shared mailbox was
-  specified (a destructive wrong-mailbox operation). It now honours
-  `sharedMailbox`/`email` (requires `Mail.ReadWrite.Shared`); the protected-folder
-  guard still applies.
-- **`folders` (action `stats`) ignored `sharedMailbox`** — stats reported the
-  signed-in account's counts. It now targets the shared mailbox and gains
-  custom-subfolder / nested-path resolution via `resolveFolderRef`.
-- **`search-emails` `deltaMode` ignored `sharedMailbox`** — incremental sync
-  hard-coded `me/mailFolders/...`. Initial sync now resolves the folder within
-  the target mailbox (well-known name, nested path, custom subfolder, or ID) and
-  routes through it.
-- **`search-emails` `internetMessageId` ignored `sharedMailbox`** — the RFC
-  Message-ID lookup hard-coded `me/messages` and the router dropped the parameter
-  before the handler saw it. Both now forward and honour `sharedMailbox`/`email`.
-
-## [3.8.2] - 2026-06
-
-Shared/delegated mailbox release. Closes the long-standing gap where the
-shared-mailbox tools could only reach a handful of well-known folders and
-could not open, read, write, or export individual shared-mailbox items.
-Every Graph path that takes a message ID, conversation ID, or folder is now
-mailbox-aware via a single `sharedMailbox` (alias `email`) parameter routed
-through `buildMailboxPrefix` (`me` → `users/{email}`). No new tools, no
-breaking changes — purely additive parameters plus one new optional scope.
-
-### Added
-
-- **Shared-mailbox custom subfolder access** — the shared-mailbox tools can now
-  reach custom subfolders and localized folder names, not just the handful of
-  Microsoft well-known folders. Closes the gap where custom folders returned
-  `ErrorInvalidIdMalformed` and could not be enumerated.
-  - `access-shared-mailbox` now resolves `folder` as a well-known name, a
-    custom/localized display name (e.g. `Archiv`), or a nested path
-    (e.g. `Inbox/Vendors/Acme`); accepts a raw `folderId`; and supports
-    `listFolders: true` to enumerate the mailbox's full folder tree (names,
-    paths, IDs, item counts).
-  - `folders` (action `list`) accepts `sharedMailbox` (alias `email`) to
-    enumerate a shared/delegated mailbox's folder hierarchy instead of the
-    signed-in account's.
-  - `search-emails` accepts `sharedMailbox` (alias `email`) to scope a search to
-    a shared mailbox — works with custom folders, nested paths, and
-    `searchAllFolders`.
-  - Folder name → ID resolution (`email/folder-utils.js`) is now mailbox-aware
-    and recurses into subfolders, so a bare custom subfolder name resolves even
-    when nested under Inbox.
-- **Shared-mailbox write operations** — `folders` (action `move`), `folders`
-  (action `create`), `apply-category`, and `update-email` (flag/unflag/complete/
-  mark-read/mark-unread) accept `sharedMailbox` (alias `email`) to act on a
-  shared/delegated mailbox instead of the signed-in account. Folder creation
-  routes the duplicate-name check and parent-folder lookup through the shared
-  mailbox; moves resolve the destination folder within it.
-  - Adds the **`Mail.ReadWrite.Shared`** delegated scope (alongside the existing
-    `Mail.Read.Shared`) in `config.js`, with a personal-account caveat note.
-    Re-authenticate after granting it so the refreshed token carries the scope.
-- **Shared-mailbox item read/export** — item-scoped readers now accept
-  `sharedMailbox` (alias `email`) so an ID obtained from a shared mailbox can
-  actually be opened. Covers `read-email` (body and `headersMode` forensic
-  headers), `attachments` (list/view/download), `search-emails` conversation
-  modes (`conversationId`, `groupByConversation`), and every `export` target
-  (`message`, `messages` batch, `conversation`, `mime`). Batch export search
-  (`searchQuery`) also resolves custom shared-mailbox folders.
+- **Automatic OAuth scope fallback (personal accounts)** — scopes are split into
+  `BASE_SCOPES` (consentable by any account) and `SHARED_SCOPES`
+  (`Mail.Read.Shared` + `Mail.ReadWrite.Shared`). Auth attempts
+  `BASE_SCOPES + SHARED_SCOPES` and, when an account can't consent to `.Shared`,
+  automatically retries with `AUTH_CONFIG.fallbackScopes` (base only).
+  Work/school accounts consent on the first try; personal accounts incur one
+  extra device code (or browser redirect). No `OUTLOOK_AUTH_AUDIENCE` change or
+  manual scope editing required. Rejection is classified by `isScopeConsentError`
+  (`auth/device-code.js`); the browser flow mirrors the fallback via a one-shot
+  `/auth?fallback=1` redirect (`auth/oauth-server.js`).
+- **Refresh uses granted scopes** — `token-storage.js` persists `granted_scopes`
+  and refreshes with them (not the full configured set), so a base-only fallback
+  session isn't logged out ~1h later by re-requesting `.Shared`.
 
 ### Fixed
 
 - **`404 ErrorInvalidMailboxItemId` on shared-mailbox reads** — message IDs are
   mailbox-scoped, but the item-scoped readers and exporters hard-coded the
-  `me/messages/...` prefix. An ID surfaced by `search-emails`/`access-shared-mailbox`
-  against a shared mailbox therefore 404'd when passed to `read-email`,
-  `attachments`, conversation retrieval, or `export`. All now route to
-  `users/{mailbox}/messages/...` when `sharedMailbox` is supplied. The raw-MIME
-  helper (`callGraphAPIRaw`) gained an optional mailbox-prefix argument so EML/
-  MBOX/MIME exports follow suit.
+  `me/messages/...` prefix. An ID surfaced by `search-emails` /
+  `access-shared-mailbox` against a shared mailbox therefore 404'd when passed to
+  `read-email`, `attachments`, conversation retrieval, or `export`. All now route
+  to `users/{mailbox}/messages/...` when `sharedMailbox` is supplied. The raw-MIME
+  helper (`callGraphAPIRaw`) gained an optional mailbox-prefix argument so
+  EML/MBOX/MIME exports follow suit.
 - **Shared-mailbox writes silently landing in the wrong mailbox** — move,
-  categorize, flag, and mark-read write handlers, and folder creation, ignored
-  the shared-mailbox flag and targeted the signed-in user, failing with
-  "folder not found" / `404 ErrorInvalidMailboxItemId`. They now honour
-  `sharedMailbox`/`email`.
+  categorize, flag, mark-read, folder create, and folder delete ignored the
+  shared-mailbox flag and targeted the signed-in user (a destructive
+  wrong-mailbox operation in the case of `delete`). All now honour
+  `sharedMailbox`/`email`; the protected-folder guard still applies.
+- **`ErrorInvalidIdMalformed` on custom shared-mailbox folders** — an
+  unrecognized folder name was forwarded to Graph as a folder ID. Custom and
+  nested folders in a shared mailbox now resolve through the shared resolver.
+
+## [3.9.1] - 2026-08
+
+Packaging hotfix. **Every published release from 3.9.0 back to 3.8.2 is
+unusable when installed from npm** — this restores a working install. No
+behavioural changes; the source tree was never affected.
+
+### Fixed
+
+- **`request-handler.js` is now included in the published tarball.** v3.8.2
+  extracted the `tools/call` dispatcher into `request-handler.js` and
+  `index.js` requires it at load time, but the file was never added to the
+  `files` allowlist in `package.json`. It was therefore excluded from every
+  tarball published since, so a fresh install died immediately with:
+
+  ```
+  Error: Cannot find module './request-handler'
+  ```
+
+  Affected published versions: **3.8.2** and **3.9.0** (3.8.3 was never
+  published). **3.8.1 was the last working release.** Running from a git
+  checkout was unaffected, which is why local testing and CI — both of which
+  run against the working tree, not the packed tarball — did not catch it.
+
+  `npm pack` now emits 62 files (was 61). Verified by installing the packed
+  tarball into a clean directory and completing an MCP `initialize` +
+  `tools/list` handshake: all 22 tools present.
+
+### Notes
+
+- Consider adding a CI job that installs the output of `npm pack` and runs a
+  handshake against it. The existing suite passes 826/826 against the working
+  tree and still missed a broken package for two releases.
+
+Feature release adding nested-folder addressing and making cross-folder email
+search reliable. Validated with a live end-to-end sweep against a personal
+Outlook.com account.
+
+### Added
+
+- **Nested folder addressing** for the `folders` tool (#216). Folders can be
+  addressed by a slash-separated **path** (`Triage/Delete`, `Inbox/Clients/Acme`,
+  case-insensitive), by explicit ID (`targetFolderId` on move, `parentFolderId`
+  on create, `folderId` on stats/delete), or by bare name (a unique top-level
+  match wins for back-compat; otherwise the folder tree is searched and
+  ambiguous names return the candidate paths + IDs). `folders list` now emits
+  each folder's **full path** and `[id: …]`. A single shared, paginated,
+  ambiguity-aware resolver replaces the two former top-level-only resolvers;
+  `search-emails folder=` also resolves nested paths now.
+
+### Changed
+
+- **`search-emails`: `kqlQuery` renamed to `searchExpression`** (#169) — it is a
+  Microsoft Graph `$search` expression, not full KQL. `kqlQuery` is retained as
+  a deprecated alias.
+
+### Fixed
+
+- **Cross-folder search (`searchAllFolders: true`) reliability** (#169,
+  V37-F-2). The client-side fallback scan depth is now decoupled from the
+  requested result count (previously ~50 messages, which — spread across all
+  folders — dropped inbox matches, so cross-folder could return *fewer* results
+  than inbox-only). Broadening scope no longer loses below-limit matches, and
+  scan coverage is disclosed via `searchMetadata` (`scanLimit`/`truncated`).
+  Multi-word queries now AND a per-word `contains(subject)` so non-contiguous
+  words match; the scope is labelled "all folders" (not "inbox"); client-side
+  fallbacks honour active boolean/date filters and run exactly once per term.
+
+## [3.8.3] - 2026-07
+
+Patch release clearing the security-audit CI gate and hardening tool
+annotations and calendar output.
+
+### Security
+
+- **Cleared the two HIGH transitive advisories** (`hono`, `fast-uri`) that
+  failed the required `npm audit --omit=dev --audit-level=high` CI gate, via
+  in-range `overrides` (`hono@^4.12.31`, `fast-uri@^3.1.4`, `body-parser@^2.3.0`)
+  (#215). These are HTTP-server-path advisories, unreachable over the stdio
+  transport, but the gate is unblocked and node_modules drift reconciled.
+- **`openWorldHint: true`** on tools whose output can carry content authored by
+  external/untrusted parties — `search-emails`, `read-email`, `search-people`,
+  `access-shared-mailbox`, `attachments`, `export` — so MCP clients apply
+  appropriate caution (e.g. prompt-injection defences) (#92).
+
+### Fixed
+
+- **`list-events` returns unambiguous times** (#118). Each start/end is now a
+  canonical UTC ISO-8601 instant (e.g. `2026-04-02T22:00:00.000Z`) followed by a
+  labelled local rendering (e.g. `GMT+10:00`), and events are requested from
+  Graph in UTC. Previously times were rendered in the server's configured
+  timezone with no label, so a consumer could not tell the zone and mis-convert.
+
+## [3.8.2] - 2026-05
+
+Patch release fixing a silent-failure bug reported by a user whose team could
+not authenticate the Outlook connector in a remote (Claude Cowork) session:
+`auth action=authenticate method=device-code` "completed successfully but
+returned empty output" — no code, no URL — and status stayed "Not
+authenticated". Root cause was a tool-error that surfaced as empty output
+instead of a readable message. The fix makes **all** tool errors visible.
+
+### Fixed
+
+- **Device-code auth (and every tool) now surfaces failures as visible text
+  instead of empty output.** The `tools/call` dispatcher returned a
+  content-less `{ error }` object on any thrown handler error; the MCP SDK
+  coerces a result missing `content` into `{ content: [] }`, which clients
+  render as empty output while the call "succeeds". The dispatcher now returns
+  proper `{ content: [...], isError: true }` tool-error results. Extracted the
+  dispatch logic into `request-handler.js` so it is unit-tested. (#213)
+- **`auth` device-code step 1 no longer fails silently.** `handleDeviceCodeAuth`
+  now wraps initiation in try/catch (mirroring step 2) and returns an
+  actionable error with targeted hints for the common remote-connector failure
+  modes: `AADSTS9002331` audience mismatch (→ `OUTLOOK_AUTH_AUDIENCE=consumers`),
+  `invalid_client`/`unauthorized_client` (→ enable public client flows), and
+  blocked network egress to `login.microsoftonline.com`. (#213)
+
+### Changed
+
+- **Device-code HTTPS requests now time out after 15s** instead of hanging
+  indefinitely when outbound egress to `login.microsoftonline.com` is blocked
+  (e.g. a sandboxed connector), failing fast with a clear message. (#213)
 
 ## [3.8.1] - 2026-05
 
