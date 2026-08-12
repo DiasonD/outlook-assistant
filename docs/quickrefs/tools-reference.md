@@ -26,6 +26,8 @@ Quick reference for all 22 MCP tools across 9 modules. Each tool includes MCP sa
 | `attachments` | List, view, or download attachments | moderate write | `action` (`list`/`view`/`download`), `messageId`, `attachmentId`, `sharedMailbox` (alias `email`) |
 | `export` | Export emails to various formats | moderate write | `target` (`message`/`messages`/`conversation`/`mime`), `id`, `format`, `outputDir`, `sharedMailbox` (alias `email`) |
 
+> **`sharedMailbox` is read/organise only.** `send-email` and `draft` (create/update/send/delete, reply, reply-all, forward) deliberately take no `sharedMailbox` parameter — they always act on the signed-in user's own mailbox, and `Mail.Send.Shared` is not requested.
+
 ### search-emails modes
 
 | Mode | Trigger | Description |
@@ -127,7 +129,7 @@ Quick reference for all 22 MCP tools across 9 modules. Each tool includes MCP sa
 
 | Tool | Description | Safety | Key Parameters |
 |------|-------------|--------|----------------|
-| `access-shared-mailbox` | Read shared mailbox (incl. custom subfolders) or enumerate its folder tree | read-only | `sharedMailbox` (or alias `email`), `folder` (name/path), `folderId`, `listFolders`, `count` |
+| `access-shared-mailbox` | Read shared mailbox (incl. custom subfolders) or enumerate its folder tree — no send/draft/reply/forward | read-only | `sharedMailbox` (or alias `email`), `folder` (name/path), `folderId`, `listFolders`, `count` |
 | `find-meeting-rooms` | Search meeting rooms | read-only | `query`, `building`, `capacity` |
 
 ## Safety Annotations

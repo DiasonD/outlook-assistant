@@ -7,78 +7,169 @@
  *   - BASE_SCOPES / SHARED_SCOPES / AUTH_CONFIG scope exports (config.js)
  *   - resolveRefreshScopes scope selection (auth/token-storage.js)
  */
-const { isScopeConsentError } = require('../../auth/device-code');
+const {
+  isScopeConsentError,
+  isConsentRequiredError,
+} = require('../../auth/device-code');
 const config = require('../../config');
 const { resolveRefreshScopes } = require('../../auth/token-storage');
 
-describe('isScopeConsentError', () => {
-  it('returns true for OAuth error=invalid_scope', () => {
-    const err = new Error('AADSTS70011: invalid scope');
-    err.oauth = { error: 'invalid_scope' };
-    expect(isScopeConsentError(err)).toBe(true);
-  });
+/** Build an Error carrying an OAuth payload, as pollForToken does. */
+function oauthError(message, oauth) {
+  const err = new Error(message);
+  if (oauth) {
+    err.oauth = oauth;
+  }
+  return err;
+}
 
-  it('returns true for OAuth error=invalid_grant', () => {
-    const err = new Error('consent required');
-    err.oauth = { error: 'invalid_grant' };
-    expect(isScopeConsentError(err)).toBe(true);
-  });
+describe('isScopeConsentError — fallback triggers', () => {
+  // A true here means: silently downgrade to base scopes, PERMANENTLY (the
+  // reduced set is persisted as granted_scopes and reused on every refresh).
+  // Only "this scope value isn't supported for this account" qualifies.
+  const cases = [
+    [
+      'OAuth error=invalid_scope',
+      oauthError('AADSTS70011: invalid scope', { error: 'invalid_scope' }),
+      true,
+    ],
+    [
+      'AADSTS650053 in error_codes array (numeric)',
+      oauthError('scope rejected', {
+        error: 'invalid_request',
+        error_codes: [650053],
+      }),
+      true,
+    ],
+    [
+      'AADSTS70011 in error_codes array (string)',
+      oauthError('scope rejected', {
+        error: 'invalid_request',
+        error_codes: ['70011'],
+      }),
+      true,
+    ],
+    [
+      'AADSTS650053 embedded in error_description',
+      oauthError('Token polling failed', {
+        error: 'invalid_request',
+        error_description:
+          "AADSTS650053: The application asked for scope 'Mail.Read.Shared' that doesn't exist.",
+      }),
+      true,
+    ],
+    [
+      'AADSTS70011 embedded in the message string',
+      oauthError(
+        'AADSTS70011: The provided value for the input parameter scope is not valid.'
+      ),
+      true,
+    ],
+    [
+      'error_description naming Mail.Read.Shared (no known AADSTS code)',
+      oauthError('Token polling failed', {
+        error: 'invalid_request',
+        error_description:
+          "AADSTS99999: Scope 'Mail.Read.Shared' is not supported for this account.",
+      }),
+      true,
+    ],
 
-  it('returns true for AADSTS650053 in error_codes array', () => {
-    const err = new Error('scope rejected');
-    err.oauth = { error: 'some_error', error_codes: [650053] };
-    expect(isScopeConsentError(err)).toBe(true);
-  });
+    // --- must NOT fall back ---
+    [
+      'bare invalid_grant (MFA / conditional access / revoked grant)',
+      oauthError('consent required', { error: 'invalid_grant' }),
+      false,
+    ],
+    [
+      'AADSTS50076 MFA-required invalid_grant',
+      oauthError('multi-factor authentication required', {
+        error: 'invalid_grant',
+        error_codes: [50076],
+        error_description:
+          'AADSTS50076: Due to a configuration change made by your administrator, you must use multi-factor authentication.',
+      }),
+      false,
+    ],
+    [
+      'AADSTS65001 alone (consent required — remediable)',
+      oauthError('not consented', {
+        error: 'invalid_grant',
+        error_codes: [65001],
+        error_description:
+          'AADSTS65001: The user or administrator has not consented to use the application.',
+      }),
+      false,
+    ],
+    [
+      'AADSTS28000 (generic invalid request)',
+      oauthError('invalid request', {
+        error: 'invalid_request',
+        error_codes: [28000],
+      }),
+      false,
+    ],
+    [
+      'authorization_pending',
+      oauthError('authorization pending', { error: 'authorization_pending' }),
+      false,
+    ],
+    [
+      'expired_token',
+      oauthError('Device code expired.', { error: 'expired_token' }),
+      false,
+    ],
+    ['network error (no oauth payload)', oauthError('ECONNRESET'), false],
+    [
+      'unrelated server error',
+      oauthError('Something unrelated went wrong', {
+        error: 'server_error',
+        error_codes: [50000],
+      }),
+      false,
+    ],
+  ];
 
-  it('returns true for AADSTS65001 in error_codes array (as strings)', () => {
-    const err = new Error('not consented');
-    err.oauth = { error: 'some_error', error_codes: ['65001'] };
-    expect(isScopeConsentError(err)).toBe(true);
-  });
-
-  it('returns true for AADSTS650053 embedded in error_description string', () => {
-    const err = new Error('Token polling failed');
-    err.oauth = {
-      error: 'invalid_request',
-      error_description:
-        "AADSTS650053: The application asked for scope 'Mail.Read.Shared' that doesn't exist.",
-    };
-    expect(isScopeConsentError(err)).toBe(true);
-  });
-
-  it('returns true for AADSTS70011 embedded in the message string', () => {
-    const err = new Error(
-      'AADSTS70011: The provided value for the input parameter scope is not valid.'
-    );
-    expect(isScopeConsentError(err)).toBe(true);
-  });
-
-  it('returns false for authorization_pending', () => {
-    const err = new Error('authorization pending');
-    err.oauth = { error: 'authorization_pending' };
-    expect(isScopeConsentError(err)).toBe(false);
-  });
-
-  it('returns false for expired_token', () => {
-    const err = new Error('Device code expired.');
-    err.oauth = { error: 'expired_token' };
-    expect(isScopeConsentError(err)).toBe(false);
-  });
-
-  it('returns false for a network error (no oauth payload)', () => {
-    const err = new Error('ECONNRESET');
-    expect(isScopeConsentError(err)).toBe(false);
-  });
-
-  it('returns false for a generic message with no scope markers', () => {
-    const err = new Error('Something unrelated went wrong');
-    err.oauth = { error: 'server_error', error_codes: [50000] };
-    expect(isScopeConsentError(err)).toBe(false);
+  it.each(cases)('%s → %s', (_name, err, expected) => {
+    expect(isScopeConsentError(err)).toBe(expected);
   });
 
   it('returns false for null / undefined', () => {
     expect(isScopeConsentError(null)).toBe(false);
     expect(isScopeConsentError(undefined)).toBe(false);
+  });
+});
+
+describe('isConsentRequiredError — AADSTS65001 only', () => {
+  it('matches AADSTS65001 in error_codes', () => {
+    expect(
+      isConsentRequiredError(
+        oauthError('not consented', {
+          error: 'invalid_grant',
+          error_codes: [65001],
+        })
+      )
+    ).toBe(true);
+  });
+
+  it('matches AADSTS65001 in the message string', () => {
+    expect(
+      isConsentRequiredError(
+        oauthError('AADSTS65001: The user has not consented.')
+      )
+    ).toBe(true);
+  });
+
+  it('does not match a scope-unsupported error', () => {
+    expect(
+      isConsentRequiredError(
+        oauthError('scope rejected', { error_codes: [650053] })
+      )
+    ).toBe(false);
+  });
+
+  it('returns false for null', () => {
+    expect(isConsentRequiredError(null)).toBe(false);
   });
 });
 

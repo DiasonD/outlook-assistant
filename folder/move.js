@@ -76,6 +76,12 @@ async function handleMoveEmails(args) {
           text: result.message,
         },
       ],
+      _meta: {
+        // Graph assigns a NEW message ID on move (unless immutable IDs are
+        // enabled) — surface the mapping so callers can keep addressing them.
+        moved: result.results?.successful || [],
+        failed: result.results?.failed || [],
+      },
     };
   } catch (error) {
     if (error.message === 'Authentication required') {
@@ -136,15 +142,20 @@ async function moveEmailsToFolder(
     // Process each email one by one to handle errors independently
     for (const emailId of emailIds) {
       try {
-        // Move the email
-        await callGraphAPI(
+        // Move the email. The response carries the moved message, whose id
+        // changes unless immutable IDs are enabled — keep it, the old id is
+        // dead afterwards.
+        const moved = await callGraphAPI(
           accessToken,
           'POST',
           `${prefix}/messages/${emailId}/move`,
           { destinationId: targetFolderId }
         );
 
-        results.successful.push(emailId);
+        results.successful.push({
+          oldId: emailId,
+          newId: moved?.id || emailId,
+        });
       } catch (error) {
         console.error(`Error moving email ${emailId}: ${error.message}`);
         results.failed.push({
@@ -159,6 +170,14 @@ async function moveEmailsToFolder(
 
     if (results.successful.length > 0) {
       message += `Successfully moved ${results.successful.length} email(s) to "${targetLabel}".`;
+      // Small batches: show the id mapping inline so the caller can address
+      // the moved messages without a re-search.
+      if (results.successful.length <= 5) {
+        message += '\n\nNew message IDs (old -> new):';
+        for (const { oldId, newId } of results.successful) {
+          message += `\n- ${oldId} -> ${newId}`;
+        }
+      }
     }
 
     if (results.failed.length > 0) {

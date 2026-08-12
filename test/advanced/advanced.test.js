@@ -196,6 +196,34 @@ describe('handleAccessSharedMailbox', () => {
       (f) => f.displayName === 'Vendors'
     );
     expect(vendors.folderPath).toBe('Inbox/Vendors');
+    expect(result._meta.partial).toBe(false);
+  });
+
+  it('should mark the folder listing partial when a branch fails', async () => {
+    callGraphAPI
+      .mockResolvedValueOnce({
+        value: [
+          {
+            id: 'inbox-id',
+            displayName: 'Inbox',
+            parentFolderId: 'root',
+            childFolderCount: 1,
+            totalItemCount: 10,
+            unreadItemCount: 2,
+          },
+        ],
+      })
+      .mockRejectedValueOnce(new Error('403 Access is denied'));
+
+    const result = await handleAccessSharedMailbox({
+      sharedMailbox: 'shared@company.com',
+      listFolders: true,
+    });
+
+    expect(result._meta.partial).toBe(true);
+    expect(result._meta.warnings[0]).toContain('Inbox');
+    expect(result.content[0].text).toContain('(partial)');
+    expect(result.content[0].text).toContain('Partial listing');
   });
 
   it('should handle minimal verbosity', async () => {

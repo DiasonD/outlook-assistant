@@ -9,12 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Shared/delegated mailbox scoping (`sharedMailbox`, alias `email`)** — every
-  Graph path that takes a message ID, conversation ID, or folder is now
-  mailbox-aware via a single optional parameter routed through
-  `buildMailboxPrefix` (`utils/mailbox.js`: `me` -> `users/{email}`). No new
-  tools, no breaking changes -- purely additive parameters plus one new optional
-  scope.
+- **Delegated shared-mailbox read and organization support (`sharedMailbox`,
+  alias `email`)** — every read/organize Graph path that takes a message ID,
+  conversation ID, or folder is now mailbox-aware via a single optional
+  parameter routed through `buildMailboxPrefix` (`utils/mailbox.js`: `me` ->
+  `users/{email}`). No new tools, no breaking changes -- purely additive
+  parameters plus one new optional scope.
+  - **Out of scope:** compose paths remain personal-mailbox-only. `send-email`
+    and `draft` (create/update/send/delete, reply, reply-all, forward) take no
+    `sharedMailbox` parameter and always act on the signed-in user's own
+    mailbox; `Mail.Send.Shared` is deliberately not requested. Mailbox settings,
+    rules, and Focused Inbox are likewise personal-mailbox-only.
   - `folder/resolve.js` (the shared path-aware resolver added in v3.9.0) takes an
     optional `mailbox`, so nested paths (`Inbox/Vendors/Acme`), custom and
     localized display names, well-known aliases, ambiguity reporting, and

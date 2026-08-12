@@ -250,7 +250,7 @@ async function handleListSharedMailboxFolders(sharedMailbox, args) {
   try {
     const accessToken = await ensureAuthenticated();
 
-    const folders = await getAllFoldersHierarchy(
+    const { folders, warnings } = await getAllFoldersHierarchy(
       accessToken,
       true,
       sharedMailbox
@@ -269,7 +269,9 @@ async function handleListSharedMailboxFolders(sharedMailbox, args) {
 
     const output = [];
     output.push(`# Shared Mailbox Folders: ${sharedMailbox}`);
-    output.push(`**Folders**: ${folders.length}\n`);
+    output.push(
+      `**Folders**: ${folders.length}${warnings.length > 0 ? ' (partial)' : ''}\n`
+    );
 
     folders.forEach((f) => {
       const depth = f.path ? f.path.split('/').length - 1 : 0;
@@ -284,6 +286,13 @@ async function handleListSharedMailboxFolders(sharedMailbox, args) {
         output.push(`${indent}  id: \`${f.id}\``);
       }
     });
+
+    if (warnings.length > 0) {
+      output.push(
+        `\n**Partial listing — ${warnings.length} branch(es) incomplete:**`
+      );
+      warnings.forEach((w) => output.push(`- ${w}`));
+    }
 
     output.push(
       '\nRead a folder with `access-shared-mailbox` using its name, ' +
@@ -300,6 +309,8 @@ async function handleListSharedMailboxFolders(sharedMailbox, args) {
       _meta: {
         sharedMailbox,
         folderCount: folders.length,
+        partial: warnings.length > 0,
+        warnings,
         folders: folders.map((f) => ({
           id: f.id,
           displayName: f.displayName,

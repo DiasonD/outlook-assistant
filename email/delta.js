@@ -12,6 +12,25 @@ const { buildMailboxPrefix } = require('../utils/mailbox');
 const { resolveFolder } = require('../folder/resolve');
 
 /**
+ * Extract the mailbox segment (`me` or `users/{address}`) from a delta/
+ * continuation token URL. Returns null when the token carries no mailbox
+ * segment we can recognise (e.g. an opaque or relative value) — those are
+ * passed through untouched for backward compatibility.
+ * @param {string} token - Delta or continuation token (a full Graph URL)
+ * @returns {string|null} - Mailbox prefix found in the token path, or null
+ */
+function mailboxFromToken(token) {
+  let pathname = token;
+  try {
+    pathname = new URL(token).pathname;
+  } catch {
+    // Not an absolute URL — match against the raw value.
+  }
+  const match = pathname.match(/(?:^|\/)(me|users\/[^/]+)(?:\/|$)/i);
+  return match ? match[1] : null;
+}
+
+/**
  * List emails delta handler - incremental sync
  * @param {object} args - Tool arguments
  * @param {string} [args.folder] - Folder to sync (default: inbox)
@@ -38,7 +57,23 @@ async function handleListEmailsDelta(args) {
     let queryParams = {};
 
     if (deltaToken) {
-      // Continue from previous sync - use deltaLink directly
+      // Continue from previous sync - use deltaLink directly. The token is
+      // authoritative: it already encodes the mailbox and folder, so the
+      // `folder`/`sharedMailbox` args are ignored. Reject a token from a
+      // different mailbox rather than silently syncing the wrong one.
+      const tokenMailbox = mailboxFromToken(deltaToken);
+      if (tokenMailbox && tokenMailbox.toLowerCase() !== prefix.toLowerCase()) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text:
+                `Delta token mailbox mismatch: the token belongs to \`${tokenMailbox}\` but this call targets \`${prefix}\`.\n\n` +
+                'A delta token is bound to the mailbox and folder it was issued for. Use the token from that same mailbox/folder, or omit `deltaToken` to start a fresh initial sync here.',
+            },
+          ],
+        };
+      }
       endpoint = deltaToken;
     } else {
       // Initial sync - start fresh. Resolve the folder (well-known name,
@@ -189,7 +224,11 @@ async function handleListEmailsDelta(args) {
       ],
       _meta: {
         syncType: isInitialSync ? 'initial' : 'incremental',
-        folder: folder,
+        mailbox: sharedMailbox || 'me',
+        // With a token the folder comes from the token, not the `folder` arg
+        // (which is ignored) — don't echo a value we didn't use.
+        folder: isInitialSync ? folder : null,
+        folderSource: isInitialSync ? 'argument' : 'deltaToken',
         itemCount: processedEmails.length,
         hasMoreChanges: hasMoreChanges,
         changesSummary: changesSummary,

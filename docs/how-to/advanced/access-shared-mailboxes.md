@@ -1,12 +1,14 @@
 ---
 title: "How to Access Shared Mailboxes"
-description: "Read emails from shared mailboxes your account has been granted access to, such as team inboxes or service accounts."
+description: "Read and organise shared mailboxes your account has been granted access to, such as team inboxes or service accounts."
 tags: [outlook-assistant, advanced, how-to]
 ---
 
 # How to Access Shared Mailboxes
 
-Read emails from shared mailboxes like team inboxes, support queues, or service accounts that your Microsoft 365 account has access to.
+Read and organise shared mailboxes like team inboxes, support queues, or service accounts that your Microsoft 365 account has access to.
+
+> **Scope:** shared-mailbox support covers reading and organising (search, read, export, attachments, flags/categories, moves, delta, conversations, folder management). **Sending, drafts, replies, and forwards from a shared mailbox are not supported** — `send-email` and `draft` always act on the signed-in user's own mailbox.
 
 ## Read from a Shared Mailbox
 
@@ -43,7 +45,7 @@ params:
 
 ## Required Permissions
 
-Your Azure app registration needs the `Mail.Read.Shared` permission to **read** a shared mailbox, and `Mail.ReadWrite.Shared` to **write** to it (move messages between folders, apply categories, flag, mark read):
+Your Azure app registration needs the `Mail.Read.Shared` permission to **read** a shared mailbox, and `Mail.ReadWrite.Shared` to **organise** it (move messages between folders, apply categories, flag, mark read, create/delete folders). `Mail.Send.Shared` is deliberately **not** requested, because sending from a shared mailbox isn't supported:
 
 1. Go to [Azure Portal → App registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) → your Outlook Assistant app
 2. Under **API permissions**, add the Microsoft Graph delegated permissions: `Mail.Read.Shared` (read) and `Mail.ReadWrite.Shared` (write)
@@ -72,7 +74,7 @@ Your Microsoft account must also have been granted access (Full Access / delegat
 
 ## Tips
 
-- `access-shared-mailbox` itself is read-only, and you can't *send* from a shared mailbox through Outlook Assistant — but you can organise one: `folders action=move`, `folders action=create`, `apply-category`, and `update-email` (flag/mark-read) all accept `sharedMailbox` (alias `email`) with `Mail.ReadWrite.Shared`
+- `access-shared-mailbox` itself is read-only, and you can't *send, draft, reply, reply-all, or forward* from a shared mailbox through Outlook Assistant — those tools always act on your own mailbox — but you can organise one: `folders action=move`, `folders action=create`, `apply-category`, and `update-email` (flag/mark-read) all accept `sharedMailbox` (alias `email`) with `Mail.ReadWrite.Shared`
 - Use `outputVerbosity: "minimal"` for quick checks on high-volume shared inboxes
 - Auto-approved by MCP clients that support annotations (read-only tool)
 

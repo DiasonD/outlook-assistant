@@ -20,35 +20,36 @@ async function handleListFolders(args) {
     const accessToken = await ensureAuthenticated();
 
     // Get all mail folders
-    const folders = await getAllFoldersHierarchy(
+    const { folders, warnings } = await getAllFoldersHierarchy(
       accessToken,
       includeItemCounts,
       sharedMailbox
     );
 
-    const heading = sharedMailbox ? `\n\nMailbox: ${sharedMailbox}` : '';
-
-    // If including children, format as hierarchy
-    if (includeChildren) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: formatFolderHierarchy(folders, includeItemCounts) + heading,
-          },
-        ],
-      };
-    } else {
-      // Otherwise, format as flat list
-      return {
-        content: [
-          {
-            type: 'text',
-            text: formatFolderList(folders, includeItemCounts) + heading,
-          },
-        ],
-      };
+    let heading = sharedMailbox ? `\n\nMailbox: ${sharedMailbox}` : '';
+    // The walk can skip branches (permission errors, depth cap) — say so
+    // instead of presenting a partial tree as complete.
+    if (warnings.length > 0) {
+      heading += `\n\n**Partial listing — ${warnings.length} branch(es) incomplete:**\n${warnings.map((w) => `- ${w}`).join('\n')}`;
     }
+
+    const body = includeChildren
+      ? formatFolderHierarchy(folders, includeItemCounts)
+      : formatFolderList(folders, includeItemCounts);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: body + heading,
+        },
+      ],
+      _meta: {
+        folderCount: folders.length,
+        partial: warnings.length > 0,
+        warnings,
+      },
+    };
   } catch (error) {
     if (error.message === 'Authentication required') {
       return {
@@ -77,7 +78,7 @@ async function handleListFolders(args) {
  * @param {string} accessToken - Access token
  * @param {boolean} includeItemCounts - Include item counts in response
  * @param {string|null} [sharedMailbox] - Shared mailbox email, or null for the signed-in account
- * @returns {Promise<Array>} - Array of folder objects with hierarchy
+ * @returns {Promise<{folders: Array, warnings: Array<string>}>} - Folders plus any reasons the tree is incomplete
  */
 async function getAllFoldersHierarchy(
   accessToken,
@@ -98,6 +99,7 @@ async function getAllFoldersHierarchy(
     sharedMailbox
   );
   const all = [];
+  const warnings = [];
   const visited = new Set();
   const queue = top.map((folder) => ({
     folder,
@@ -115,6 +117,12 @@ async function getAllFoldersHierarchy(
     visited.add(folder.id);
     all.push({ ...folder, path, parentFolder: parentPath, isTopLevel });
 
+    if (folder.childFolderCount > 0 && depth >= 20) {
+      warnings.push(
+        `Depth limit (20) reached at "${path}" [id: ${folder.id}] — its subfolders were not listed.`
+      );
+    }
+
     if (folder.childFolderCount > 0 && depth < 20) {
       let children;
       try {
@@ -127,6 +135,9 @@ async function getAllFoldersHierarchy(
       } catch (error) {
         console.error(
           `Error getting child folders for "${folder.displayName}": ${error.message}`
+        );
+        warnings.push(
+          `Could not list subfolders of "${path}" [id: ${folder.id}]: ${error.message}`
         );
         continue;
       }
@@ -141,7 +152,7 @@ async function getAllFoldersHierarchy(
       }
     }
   }
-  return all;
+  return { folders: all, warnings };
 }
 
 /**

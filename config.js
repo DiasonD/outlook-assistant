@@ -65,14 +65,15 @@ if (
 }
 
 // Shared/delegated mailbox access (work/school accounts only). Required to
-// read AND write a shared mailbox via /users/{email}/...; without these every
-// write (move/category/flag/mark-read) falls back to `me` and fails with
-// ErrorInvalidMailboxItemId. Personal Microsoft accounts cannot consent to
-// these — requesting them triggers an AADSTS scope-consent error. The auth flow
-// now ATTEMPTS the full set (BASE_SCOPES + SHARED_SCOPES) and automatically
-// FALLS BACK to BASE_SCOPES for accounts that can't consent to `.Shared` (see
-// auth/tools.js handleDeviceCodeComplete + auth/device-code.js
-// isScopeConsentError). No manual scope editing required.
+// read and organise a shared mailbox via /users/{email}/...; without these
+// every organise operation (move/category/flag/mark-read) falls back to `me`
+// and fails with ErrorInvalidMailboxItemId. Sending/drafts from a shared
+// mailbox are out of scope (Mail.Send.Shared deliberately not requested).
+// The auth flow ATTEMPTS the full set (BASE_SCOPES + SHARED_SCOPES) and falls
+// back to BASE_SCOPES only on errors proving the account can't use `.Shared`
+// scopes (invalid_scope, AADSTS650053/70011, or an error naming a `.Shared`
+// scope — see auth/device-code.js isScopeConsentError); consent-required
+// errors (AADSTS65001) surface remediation instead of downgrading.
 const SHARED_SCOPES = [
   'Mail.Read.Shared', // access-shared-mailbox (read)
   'Mail.ReadWrite.Shared', // shared-mailbox writes (move/category/flag/mark-read)

@@ -51,46 +51,22 @@ const templates = {
     </html>`,
 };
 
-// Scope sets for the browser auth-server process. This process is env-driven
-// and standalone, so we hardcode the two arrays here rather than import from
-// config.js — KEEP IN SYNC WITH config.js (BASE_SCOPES / SHARED_SCOPES), which
-// is the source of truth. The `.Shared` scopes aren't consentable by personal
-// Microsoft accounts; the /auth/callback fallback handles that with one extra
-// redirect to the base-only scope set.
-const BROWSER_BASE_SCOPES = [
-  'offline_access',
-  'User.Read',
-  'Mail.Read',
-  'Mail.ReadWrite',
-  'Mail.Send',
-  'Calendars.Read',
-  'Calendars.ReadWrite',
-  'Contacts.Read',
-  'Contacts.ReadWrite',
-  'People.Read',
-  'MailboxSettings.ReadWrite',
-];
-const BROWSER_SHARED_SCOPES = ['Mail.Read.Shared', 'Mail.ReadWrite.Shared'];
-
-// AADSTS codes / OAuth errors that indicate a scope-consent rejection. Mirrors
-// auth/device-code.js isScopeConsentError (kept local to avoid importing the
-// MCP config into the standalone auth-server process).
-const SCOPE_CONSENT_MARKERS = [
-  'invalid_scope',
-  'invalid_grant',
-  'AADSTS650053',
-  'AADSTS65001',
-  'AADSTS70011',
-  'AADSTS28000',
-];
+// Scope sets and scope-rejection classification come from the same sources as
+// the device-code flow — config.js is the single source of truth for scopes,
+// device-code.js for "the account can't consent to `.Shared`". The
+// /auth/callback fallback handles that with one extra redirect to the
+// base-only scope set.
+const { BASE_SCOPES, SHARED_SCOPES } = require('../config');
+const { isScopeConsentError } = require('./device-code');
 
 function isScopeConsentCallbackError(error, errorDescription) {
-  const haystack = `${error || ''} ${errorDescription || ''}`;
-  return SCOPE_CONSENT_MARKERS.some((m) => haystack.includes(m));
+  return isScopeConsentError({
+    oauth: { error, error_description: errorDescription },
+  });
 }
 
 function createAuthConfig(envPrefix = 'OUTLOOK_') {
-  const fallbackScopes = BROWSER_BASE_SCOPES;
+  const fallbackScopes = BASE_SCOPES;
   return {
     clientId:
       process.env[`${envPrefix}CLIENT_ID`] || process.env.MS_CLIENT_ID || '',
@@ -104,7 +80,7 @@ function createAuthConfig(envPrefix = 'OUTLOOK_') {
     // Default to base + shared; the OUTLOOK_SCOPES override still wins.
     scopes: process.env[`${envPrefix}SCOPES`]
       ? process.env[`${envPrefix}SCOPES`].split(' ')
-      : [...BROWSER_BASE_SCOPES, ...BROWSER_SHARED_SCOPES],
+      : [...BASE_SCOPES, ...SHARED_SCOPES],
     fallbackScopes,
     tokenEndpoint:
       process.env[`${envPrefix}TOKEN_ENDPOINT`] ||

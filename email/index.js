@@ -140,7 +140,7 @@ const emailTools = [
         deltaToken: {
           type: 'string',
           description:
-            'Token from previous delta call for incremental sync (deltaMode only)',
+            'Token from previous delta call for incremental sync (deltaMode only). The token is authoritative — it encodes its own mailbox and folder, so `folder`/`sharedMailbox` are ignored and a token from a different mailbox is rejected.',
         },
         maxResults: {
           type: 'number',

@@ -157,25 +157,42 @@ async function pollForToken(clientId, deviceCode, interval, expiresIn) {
   );
 }
 
-// AADSTS codes that indicate the signed-in account cannot consent to one or
-// more requested scopes (the `.Shared` scopes for a personal Microsoft account
-// is the case we care about). We match the FAMILY defensively because we cannot
-// test against a live personal account here:
-//   650053 — "The application '<app>' asked for scope '<x>' that doesn't exist
-//             on the resource" (commonly surfaced for unsupported scopes)
-//   65001  — user/admin has not consented to the application
+// AADSTS codes meaning "this scope value isn't supported for this account" —
+// the only signals that justify a SILENT, DURABLE downgrade to base scopes:
+//   650053 — "The application asked for scope '<x>' that doesn't exist on the
+//             resource" (the personal-account `.Shared` rejection)
 //   70011  — invalid scope value
-//   28000  — invalid request / unsupported scope (seen on some tenants)
-// CAVEAT: the EXACT code returned for the personal-account `.Shared` rejection
-// should be confirmed empirically against a real personal Microsoft account.
-// Until then we match the whole family + the OAuth `error` values defensively.
-const SCOPE_CONSENT_AADSTS_CODES = ['650053', '65001', '70011', '28000'];
+// Deliberately NOT here:
+//   65001  — consent required (remediable: user/admin consent) → see
+//             isConsentRequiredError; must not silently strip capability
+//   28000  — generic invalid request, not scope-specific
+//   invalid_grant (bare) — MFA/conditional access, revoked grant, tenant policy
+const SCOPE_UNSUPPORTED_AADSTS_CODES = ['650053', '70011'];
+const CONSENT_REQUIRED_AADSTS_CODES = ['65001'];
 
 /**
- * Predicate: does this error look like a scope-consent rejection that warrants
- * falling back to base scopes? Matches defensively against the OAuth `error`
- * value AND the AADSTS code family found in `err.oauth.error_codes` (array) or
- * anywhere in `err.oauth.error_description` / `err.message` (string).
+ * Does `err` carry one of `codes` in `oauth.error_codes` (array) or as an
+ * `AADSTS<code>` substring in `oauth.error_description` / `err.message`?
+ * @param {Error & {oauth?: object}} err
+ * @param {string[]} codes
+ * @returns {boolean}
+ */
+function hasAadstsCode(err, codes) {
+  const oauth = err.oauth || {};
+  if (Array.isArray(oauth.error_codes)) {
+    const found = oauth.error_codes.map(String);
+    if (found.some((c) => codes.includes(c))) {
+      return true;
+    }
+  }
+  const haystack = `${oauth.error_description || ''} ${err.message || ''}`;
+  return codes.some((code) => haystack.includes(`AADSTS${code}`));
+}
+
+/**
+ * Predicate: is this a "requested scope isn't supported for this account"
+ * rejection that warrants falling back to base scopes? Deliberately narrow —
+ * a false positive silently and permanently strips shared-mailbox access.
  * @param {Error & {oauth?: object}} err
  * @returns {boolean}
  */
@@ -185,28 +202,30 @@ function isScopeConsentError(err) {
   }
   const oauth = err.oauth || {};
 
-  // OAuth-level error values that map to a scope/consent problem.
-  if (oauth.error === 'invalid_scope' || oauth.error === 'invalid_grant') {
+  if (oauth.error === 'invalid_scope') {
     return true;
   }
-
-  // AADSTS codes can arrive as a numeric array (`error_codes`) ...
-  if (Array.isArray(oauth.error_codes)) {
-    const codes = oauth.error_codes.map(String);
-    if (codes.some((c) => SCOPE_CONSENT_AADSTS_CODES.includes(c))) {
-      return true;
-    }
+  if (hasAadstsCode(err, SCOPE_UNSUPPORTED_AADSTS_CODES)) {
+    return true;
   }
+  // Azure named one of the `.Shared` scopes as the offending value.
+  const description = oauth.error_description || '';
+  return config.SHARED_SCOPES.some((scope) => description.includes(scope));
+}
 
-  // ... or embedded in free-text (error_description / message).
-  const haystack = `${oauth.error_description || ''} ${err.message || ''}`;
-  return SCOPE_CONSENT_AADSTS_CODES.some((code) =>
-    haystack.includes(`AADSTS${code}`)
-  );
+/**
+ * Predicate: consent required (AADSTS65001). Remediable via user/admin consent
+ * — surface it, never downgrade the scope set.
+ * @param {Error & {oauth?: object}} err
+ * @returns {boolean}
+ */
+function isConsentRequiredError(err) {
+  return Boolean(err) && hasAadstsCode(err, CONSENT_REQUIRED_AADSTS_CODES);
 }
 
 module.exports = {
   initiateDeviceCodeFlow,
   pollForToken,
   isScopeConsentError,
+  isConsentRequiredError,
 };

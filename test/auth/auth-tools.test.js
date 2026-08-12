@@ -48,6 +48,7 @@ const {
   initiateDeviceCodeFlow,
   pollForToken,
   isScopeConsentError,
+  isConsentRequiredError,
 } = require('../../auth/device-code');
 const TokenStorage = require('../../auth/token-storage');
 
@@ -218,9 +219,13 @@ describe('device code state persistence', () => {
     await handleDeviceCodeAuth();
 
     const stats = fs.statSync(DEVICE_CODE_STATE_PATH);
-    // Check owner-only permissions (0o600 = rw-------)
-    const mode = stats.mode & 0o777;
-    expect(mode).toBe(0o600);
+    // POSIX mode bits are meaningless on Windows — Node reports 0o666 there
+    // regardless of the mode passed to writeFileSync.
+    if (process.platform !== 'win32') {
+      // Check owner-only permissions (0o600 = rw-------)
+      expect(stats.mode & 0o777).toBe(0o600);
+    }
+    expect(stats.isFile()).toBe(true);
   });
 });
 
@@ -340,6 +345,53 @@ describe('device code scope fallback + granted_scopes', () => {
     expect(result.content[0].text).toContain('Authentication failed');
     // Should NOT have attempted another re-issue
     expect(initiateDeviceCodeFlow).not.toHaveBeenCalled();
+  });
+
+  test('AADSTS65001 surfaces a consent remediation message, not a new device code', async () => {
+    const state = {
+      deviceCode: 'dc_full',
+      interval: 5,
+      expiresIn: 900,
+      expiresAt: Date.now() + 900 * 1000,
+      scopesUsed: 'full',
+    };
+    fs.writeFileSync(DEVICE_CODE_STATE_PATH, JSON.stringify(state));
+
+    const consentErr = new Error('AADSTS65001: not consented');
+    consentErr.oauth = { error: 'invalid_grant', error_codes: [65001] };
+    pollForToken.mockRejectedValue(consentErr);
+    isScopeConsentError.mockReturnValue(false);
+    isConsentRequiredError.mockReturnValue(true);
+
+    const result = await handleDeviceCodeComplete();
+
+    expect(initiateDeviceCodeFlow).not.toHaveBeenCalled();
+    expect(result.content[0].text).toContain('AADSTS65001');
+    expect(result.content[0].text).toMatch(/administrator may need to grant/i);
+    expect(result.content[0].text).toMatch(/capability is unchanged/i);
+    expect(fs.existsSync(DEVICE_CODE_STATE_PATH)).toBe(false);
+  });
+
+  test('generic invalid_grant does not fall back — plain failure message', async () => {
+    const state = {
+      deviceCode: 'dc_full',
+      interval: 5,
+      expiresIn: 900,
+      expiresAt: Date.now() + 900 * 1000,
+      scopesUsed: 'full',
+    };
+    fs.writeFileSync(DEVICE_CODE_STATE_PATH, JSON.stringify(state));
+
+    pollForToken.mockRejectedValue(new Error('AADSTS50076: MFA required'));
+    isScopeConsentError.mockReturnValue(false);
+    isConsentRequiredError.mockReturnValue(false);
+
+    const result = await handleDeviceCodeComplete();
+
+    expect(initiateDeviceCodeFlow).not.toHaveBeenCalled();
+    expect(result.content[0].text).toContain(
+      'Authentication failed: AADSTS50076'
+    );
   });
 
   test('handleDeviceCodeAuth records scopesUsed=full in persisted state', async () => {

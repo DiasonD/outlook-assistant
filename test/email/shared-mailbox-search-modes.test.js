@@ -81,16 +81,58 @@ describe('delta initial sync — shared-mailbox routing', () => {
     );
   });
 
-  test('continuation (deltaToken) branch is left untouched', async () => {
+  test('continuation (deltaToken) branch is left untouched for a matching mailbox', async () => {
     callGraphAPI.mockResolvedValue({ value: [] });
-    const deltaLink = 'me/mailFolders/inbox/messages/delta?$deltatoken=abc';
-    await handleListEmailsDelta({
+    const deltaLink = `https://graph.microsoft.com/v1.0/users/${MAILBOX}/mailFolders/inbox/messages/delta?$deltatoken=abc`;
+    const result = await handleListEmailsDelta({
       deltaToken: deltaLink,
       sharedMailbox: MAILBOX,
     });
     // The deltaLink URL is used verbatim; the resolver must NOT run.
     expect(resolveFolder).not.toHaveBeenCalled();
     expect(endpointOfCall()).toBe(deltaLink);
+    expect(result._meta.mailbox).toBe(MAILBOX);
+    // The folder arg is ignored when a token is supplied — don't echo it.
+    expect(result._meta.folder).toBeNull();
+    expect(result._meta.folderSource).toBe('deltaToken');
+  });
+
+  test('rejects a /me token supplied with a sharedMailbox', async () => {
+    const result = await handleListEmailsDelta({
+      deltaToken:
+        'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=abc',
+      sharedMailbox: MAILBOX,
+    });
+    expect(callGraphAPI).not.toHaveBeenCalled();
+    expect(result.content[0].text).toMatch(/mailbox mismatch/i);
+    expect(result.content[0].text).toContain(`users/${MAILBOX}`);
+  });
+
+  test('rejects a token issued for a different shared mailbox', async () => {
+    const result = await handleListEmailsDelta({
+      deltaToken:
+        'https://graph.microsoft.com/v1.0/users/other@werdropo.com/mailFolders/inbox/messages/delta?$deltatoken=abc',
+      sharedMailbox: MAILBOX,
+    });
+    expect(callGraphAPI).not.toHaveBeenCalled();
+    expect(result.content[0].text).toMatch(/mailbox mismatch/i);
+  });
+
+  test('rejects a shared-mailbox token supplied without a mailbox', async () => {
+    const result = await handleListEmailsDelta({
+      deltaToken: `https://graph.microsoft.com/v1.0/users/${MAILBOX}/mailFolders/inbox/messages/delta?$deltatoken=abc`,
+    });
+    expect(callGraphAPI).not.toHaveBeenCalled();
+    expect(result.content[0].text).toMatch(/mailbox mismatch/i);
+  });
+
+  test('passes a /me token through when no mailbox is supplied', async () => {
+    callGraphAPI.mockResolvedValue({ value: [] });
+    const deltaLink =
+      'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=abc';
+    const result = await handleListEmailsDelta({ deltaToken: deltaLink });
+    expect(endpointOfCall()).toBe(deltaLink);
+    expect(result._meta.mailbox).toBe('me');
   });
 
   test('surfaces the resolver error instead of querying Graph', async () => {

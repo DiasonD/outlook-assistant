@@ -9,6 +9,7 @@ const {
   initiateDeviceCodeFlow,
   pollForToken,
   isScopeConsentError,
+  isConsentRequiredError,
 } = require('./device-code');
 
 // Path for persisting device code state across MCP server restarts
@@ -455,6 +456,26 @@ async function handleDeviceCodeComplete() {
 
     pendingDeviceCode = null;
     saveDeviceCodeState(null);
+
+    // Consent required (AADSTS65001) — remediable, so surface it instead of
+    // silently downgrading to base scopes (which would strip shared-mailbox
+    // access for every future refresh).
+    if (isConsentRequiredError(error)) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: [
+              'Authentication failed: consent was not granted (AADSTS65001).',
+              '',
+              'An administrator may need to grant consent for the shared-mailbox scopes (Mail.Read.Shared, Mail.ReadWrite.Shared), or re-run `auth action=authenticate` and approve every requested permission.',
+              'No scopes were changed — your configured capability is unchanged.',
+            ].join('\n'),
+          },
+        ],
+      };
+    }
+
     return {
       content: [
         {
