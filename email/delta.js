@@ -27,7 +27,16 @@ function mailboxFromToken(token) {
     // Not an absolute URL — match against the raw value.
   }
   const match = pathname.match(/(?:^|\/)(me|users\/[^/]+)(?:\/|$)/i);
-  return match ? match[1] : null;
+  if (!match) {
+    return null;
+  }
+  // Token URLs carry the percent-encoded form; local prefixes are raw.
+  // Decode so the two compare on equal footing.
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
 }
 
 /**

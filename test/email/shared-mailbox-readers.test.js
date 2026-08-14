@@ -125,6 +125,7 @@ describe('attachments shared-mailbox routing', () => {
       messageId: ID,
       attachmentId: 'att-1',
       sharedMailbox: MAILBOX,
+      outputDir: scratchDir,
     });
     expect(endpointOfCall()).toBe(
       `users/${MAILBOX}/messages/${ID}/attachments/att-1`

@@ -197,12 +197,15 @@ function setupOAuthRoutes(
     // }
     // if (req.session) delete req.session.oauthState;
 
+    // A `fb.` state means this code was issued for the base-only scope set;
+    // the redemption below must request the same set.
+    const alreadyFallback =
+      typeof state === 'string' && state.startsWith('fb.');
+
     if (error) {
       // Scope-consent rejection (e.g. personal account can't consent to the
       // `.Shared` scopes) → retry once with base scopes via a single redirect,
       // unless we're already in fallback (state marked `fb.`) — then surface it.
-      const alreadyFallback =
-        typeof state === 'string' && state.startsWith('fb.');
       if (
         !alreadyFallback &&
         isScopeConsentCallbackError(error, error_description)
@@ -229,7 +232,12 @@ function setupOAuthRoutes(
     }
 
     try {
-      await tokenStorage.exchangeCodeForTokens(code);
+      await tokenStorage.exchangeCodeForTokens(
+        code,
+        alreadyFallback
+          ? authConfig.fallbackScopes || authConfig.scopes
+          : authConfig.scopes
+      );
       res.send(templates.authSuccess);
     } catch (exchangeError) {
       console.error('Token exchange error:', exchangeError);

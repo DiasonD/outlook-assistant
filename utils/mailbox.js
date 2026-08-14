@@ -34,10 +34,11 @@ function buildMailboxPrefix(mailbox) {
       `Invalid mailbox "${mailbox}" — expected a shared mailbox email address (e.g. "team@contoso.com").`
     );
   }
-  // Encode as a single path segment. `@` is a legal path character (RFC 3986
-  // pchar) and Graph/the existing endpoints expect it literal, so restore it;
-  // a literal `%40` in the input is impossible because `%` is rejected above.
-  return `users/${encodeURIComponent(trimmed).replace(/%40/g, '@')}`;
+  // Return the address raw: encoding happens exactly once, in the Graph
+  // client (`callGraphAPI` / `callGraphAPIRaw` encode each path segment).
+  // Pre-encoding here double-encoded addresses like `team+archive@…` into
+  // `%252B`. The pattern above already confines the value to one segment.
+  return `users/${trimmed}`;
 }
 
 module.exports = { buildMailboxPrefix };

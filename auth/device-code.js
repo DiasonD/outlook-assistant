@@ -177,6 +177,13 @@ const CONSENT_REQUIRED_AADSTS_CODES = ['65001'];
  * @param {string[]} codes
  * @returns {boolean}
  */
+// The OAuth error payload is attacker-influencable HTTP data — fields may
+// arrive as arrays or objects instead of strings. Coerce before substring
+// checks so `includes` is always String.prototype.includes.
+function asString(value) {
+  return typeof value === 'string' ? value : '';
+}
+
 function hasAadstsCode(err, codes) {
   const oauth = err.oauth || {};
   if (Array.isArray(oauth.error_codes)) {
@@ -185,7 +192,7 @@ function hasAadstsCode(err, codes) {
       return true;
     }
   }
-  const haystack = `${oauth.error_description || ''} ${err.message || ''}`;
+  const haystack = `${asString(oauth.error_description)} ${asString(err.message)}`;
   return codes.some((code) => haystack.includes(`AADSTS${code}`));
 }
 
@@ -209,7 +216,7 @@ function isScopeConsentError(err) {
     return true;
   }
   // Azure named one of the `.Shared` scopes as the offending value.
-  const description = oauth.error_description || '';
+  const description = asString(oauth.error_description);
   return config.SHARED_SCOPES.some((scope) => description.includes(scope));
 }
 

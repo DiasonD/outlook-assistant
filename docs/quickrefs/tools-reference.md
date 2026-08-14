@@ -112,7 +112,7 @@ Quick reference for all 22 MCP tools across 9 modules. Each tool includes MCP sa
 | Tool | Description | Safety | Key Parameters |
 |------|-------------|--------|----------------|
 | `manage-category` | CRUD: `list` (default), `create`, `update`/`set` (alias), `delete` | moderate write | `action`, `displayName`, `color`, `id` (or deprecated alias `categoryId`) |
-| `apply-category` | Apply/add/remove categories on messages | moderate write | `messageId`/`messageIds`, `categories`, `action`, `sharedMailbox` (alias `email`) |
+| `apply-category` | Apply/add/remove categories on messages. With `sharedMailbox`, category names must already exist in that mailbox's master list (`manage-category` manages the signed-in account only) | moderate write | `messageId`/`messageIds`, `categories`, `action`, `sharedMailbox` (alias `email`) |
 | `manage-focused-inbox` | Focused Inbox overrides: `list` (default), `set`, `delete` | moderate write | `action`, `emailAddress`, `classifyAs` |
 
 ### Category colours

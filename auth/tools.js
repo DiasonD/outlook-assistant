@@ -435,11 +435,19 @@ async function handleDeviceCodeComplete() {
       );
       // Do NOT clear pendingDeviceCode — initiateDeviceCode replaces it.
       try {
-        return await initiateDeviceCode(
+        const fallbackResponse = await initiateDeviceCode(
           config.AUTH_CONFIG.fallbackScopes,
           'base',
           "Your account doesn't support shared-mailbox access; enter this new code to finish signing in."
         );
+        // initiateDeviceCode reports its own failures as { isError: true }
+        // instead of throwing. Clear the rejected full-scope pending state so
+        // a later completion attempt doesn't retry it.
+        if (fallbackResponse && fallbackResponse.isError) {
+          pendingDeviceCode = null;
+          saveDeviceCodeState(null);
+        }
+        return fallbackResponse;
       } catch (reissueError) {
         pendingDeviceCode = null;
         saveDeviceCodeState(null);

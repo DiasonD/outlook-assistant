@@ -280,20 +280,25 @@ class TokenStorage {
     return this._refreshPromise.then((tokens) => tokens.access_token);
   }
 
-  async exchangeCodeForTokens(authCode) {
+  async exchangeCodeForTokens(authCode, scopes = null) {
     if (!this.config.clientId || !this.config.clientSecret) {
       throw new Error(
         'Client ID or Client Secret is not configured. Cannot exchange code for tokens.'
       );
     }
     console.log('Exchanging authorization code for tokens...');
+    // The redemption request must use the same scope set the authorization
+    // code was issued for — a fallback (base-only) code redeemed with the
+    // full configured set would re-request the rejected `.Shared` scopes.
+    const requestedScopes =
+      Array.isArray(scopes) && scopes.length ? scopes : this.config.scopes;
     const postData = querystring.stringify({
       client_id: this.config.clientId,
       client_secret: this.config.clientSecret,
       grant_type: 'authorization_code',
       code: authCode,
       redirect_uri: this.config.redirectUri,
-      scope: this.config.scopes.join(' '),
+      scope: requestedScopes.join(' '),
     });
 
     const requestOptions = {
@@ -322,11 +327,14 @@ class TokenStorage {
                   expires_at: Date.now() + responseBody.expires_in * 1000,
                   scope: responseBody.scope,
                   // Persist granted scopes so refresh re-requests exactly what
-                  // was granted (mirrors the device-code path).
+                  // was granted (mirrors the device-code path). If the token
+                  // response omits `scope`, fall back to what we requested so
+                  // a fallback session never refreshes with `.Shared` again.
                   granted_scopes:
-                    typeof responseBody.scope === 'string'
+                    typeof responseBody.scope === 'string' &&
+                    responseBody.scope.trim()
                       ? responseBody.scope.split(' ').filter(Boolean)
-                      : undefined,
+                      : requestedScopes,
                   token_type: responseBody.token_type,
                 };
                 try {

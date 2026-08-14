@@ -300,7 +300,11 @@ async function callGraphAPIRaw(accessToken, emailId, mailboxPrefix = 'me') {
   }
 
   return new Promise((resolve, reject) => {
-    const path = `${mailboxPrefix}/messages/${encodeURIComponent(emailId)}/$value`;
+    const encodedPrefix = mailboxPrefix
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+    const path = `${encodedPrefix}/messages/${encodeURIComponent(emailId)}/$value`;
     const finalUrl = `${config.GRAPH_API_ENDPOINT}${path}`;
 
     const options = {

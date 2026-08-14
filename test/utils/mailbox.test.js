@@ -50,17 +50,14 @@ describe('mailbox', () => {
       });
     });
 
-    describe('path-segment encoding', () => {
-      test('percent-encodes a plus-addressed local part', () => {
-        // `+` is legal in an address but ambiguous in a URL, so it is escaped.
+    describe('path-segment shape', () => {
+      test('returns the address raw — encoding happens once, in the Graph client', () => {
+        // Pre-encoding here would double-encode (`+` → `%2B` → `%252B`) once
+        // callGraphAPI encodes each path segment.
         expect(buildMailboxPrefix('sales+alerts@company.com')).toBe(
-          'users/sales%2Balerts@company.com'
+          'users/sales+alerts@company.com'
         );
-      });
-
-      test('leaves `@` literal (a legal path character)', () => {
-        expect(buildMailboxPrefix('a@b.com')).toContain('@');
-        expect(buildMailboxPrefix('a@b.com')).not.toContain('%40');
+        expect(buildMailboxPrefix('a@b.com')).not.toContain('%');
       });
 
       test('output is always a two-segment users/ prefix', () => {

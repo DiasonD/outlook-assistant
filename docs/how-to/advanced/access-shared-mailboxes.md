@@ -70,7 +70,8 @@ Your Microsoft account must also have been granted access (Full Access / delegat
 | "Access denied" or 403 error | Missing `Mail.Read.Shared` (read) / `Mail.ReadWrite.Shared` (write) permission | Add the permission in Azure Portal, then re-authenticate |
 | "Mailbox not found" | Incorrect email address or no access granted | Verify the address and check with your Exchange admin |
 | Empty results | Mailbox is empty or folder doesn't exist | Try `folder: "inbox"` to confirm access |
-| `404 ErrorInvalidMailboxItemId` or "folder not found" on a move/categorize/flag | Write addressed your own mailbox, or token lacks `Mail.ReadWrite.Shared` | Pass `sharedMailbox` on the write tool, add the scope in Azure, and re-authenticate |
+| `404 ErrorInvalidMailboxItemId` or "folder not found" on a move/categorize/flag | `sharedMailbox` was omitted, so the write addressed your own mailbox where the shared ID doesn't exist | Pass `sharedMailbox` on the write tool |
+| 403 access denied on a move/categorize/flag with `sharedMailbox` set | Token lacks `Mail.ReadWrite.Shared` or delegate access is missing — the request stays shared-mailbox-scoped and fails; it does not fall back to your own mailbox | Add the scope in Azure, grant delegate access, and re-authenticate |
 
 ## Tips
 
